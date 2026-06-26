@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Notch</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="notch" class="notch collapsed" data-state="idle">
+      <!-- ═══ COLLAPSED BAR ═══ -->
+      <div class="collapsed-view" id="collapsedView">
+        <div class="c-left">
+          <div class="c-time-wrap" id="cTimeWrap">
+            <span class="c-time" id="cTime">9:41</span>
+            <span class="c-period" id="cPeriod">Pm</span>
+          </div>
+          <img class="c-album-img" id="cAlbumImg" src="" alt="" />
+          <!-- BT collapsed: spinning airpods -->
+          <div class="c-bt-spin" id="cBtSpin">
+            <img id="cBtSpinImg" src="airpods_gen.png" alt="" />
+          </div>
+        </div>
+        <div class="c-center">
+          <span class="c-date" id="cDate"></span>
+          <span class="c-song" id="cSongTitle"></span>
+          <span class="c-bt-name" id="cBtLabel"></span>
+        </div>
+        <div class="c-right">
+          <div class="c-eq" id="cEq"><span></span><span></span><span></span><span></span></div>
+          <!-- BT collapsed: equalizer -->
+          <div class="c-bt-eq" id="cBtEq"><span></span><span></span><span></span><span></span></div>
+          <!-- BT collapsed: circular battery -->
+          <div class="c-bt-ring" id="cBtRing">
+            <svg viewBox="0 0 36 36">
+              <circle class="ring-bg" cx="18" cy="18" r="15" />
+              <circle class="ring-fill" id="cBtRingFill" cx="18" cy="18" r="15" />
+              <text class="ring-text" id="cBtRingText" x="18" y="20" text-anchor="middle">72</text>
+            </svg>
+          </div>
+          <!-- Recording dot -->
+          <div class="c-rec" id="cRec">
+            <div class="rec-dot"></div>
+            <span id="cRecTime">0:00</span>
+          </div>
+          <!-- Bluetooth name (old, kept for other states) -->
+          <span class="c-bt" id="cBtName"></span>
+          <div class="c-batt" id="cBattery">
+            <svg width="22" height="11" viewBox="0 0 22 11" fill="none" id="cBattIcon">
+              <rect x="0.5" y="0.5" width="18" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1" />
+              <path d="M20 3.5C20.5 3.5 21 4 21 5.5C21 7 20.5 7.5 20 7.5" stroke="rgba(255,255,255,0.4)" stroke-width="1" stroke-linecap="round"/>
+              <rect id="cBattInner" x="2" y="2" width="15" height="7" rx="1.5" fill="currentColor" />
+              <path id="cBattZap" d="M10 2L7 6h2.5l-1 3.5L12 5H9.5L10 2z" fill="var(--bg)" style="display:none;"/>
+            </svg>
+            <span id="cBattPct"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PANEL: IDLE (Dashboard) ═══ -->
+        <div class="panel panel-idle" id="panelIdle">
+          <div class="dash">
+            <div class="dash-header" style="position: relative;">
+              <div class="dash-icons">
+                <svg id="idleSilentIcon" style="display:none; color: var(--red); margin-right: 6px;" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                  <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,15H15A3,3 0 0,1 12,18A3,3 0 0,1 9,15H5V5H19M19,3H5C3.89,3 3,3.89 3,5V15A2,2 0 0,0 5,17H9A3,3 0 0,0 12,20A3,3 0 0,0 15,17H19A2,2 0 0,0 21,15V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/>
+                </svg>
+              </div>
+              <div id="dashTimeDate" style="position: absolute; left: 50%; transform: translateX(-40%); display: flex; gap: 120px; justify-content: center; width: 300px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap;">
+                <span id="bigTime">9:41 AM</span> <span id="bigDate">Mon, Jan 1</span>
+              </div>
+              <div class="dash-battery" id="dashHeaderBattery">
+              <span id="dashBattPctText">100%</span>
+              <svg class="pill-batt-svg" viewBox="0 0 24 12" style="width:24px;height:12px;margin-left:6px;">
+                <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
+                <rect id="dashBattFill" x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#fff"/>
+                <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="dash-main">
+            <!-- Music Column -->
+            <div class="dash-music" id="dashMusicCol">
+              <div class="dash-now-playing">
+                <div class="dash-art">
+                  <img id="dashCoverImg" src="" crossorigin="anonymous"/>
+                  <div class="dash-art-placeholder">♫</div>
+                  <div class="dash-app-icon">
+                    <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                  </div>
+                </div>
+                <div class="dash-meta">
+                  <div class="dash-title" id="dashSongTitle">Not Playing</div>
+                  <div class="dash-artist" id="dashSongArtist"></div>
+                  <div class="dash-album" id="dashSongAlbum"></div>
+                  <div class="dash-ctrls">
+                    <svg id="dashPrevBtn" class="dash-ctrl" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    <svg id="dashPlayBtn" class="dash-ctrl main" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="dashNextBtn" class="dash-ctrl" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    <div class="dash-equalizer equalizer" id="dashEqualizer">
+                      <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-sep" id="dashMusicSep"></div>
+
+            <!-- Calendar Column -->
+            <div class="dash-cal">
+              <div class="dash-cal-row">
+                <div class="dash-month-large">
+                  <span class="cal-arrow" id="calPrevBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 16.58L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.42z"/></svg>
+                  </span>
+                  <span id="dashMonth">Oct</span>
+                  <span class="cal-arrow" id="calNextBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.58L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.42z"/></svg>
+                  </span>
+                </div>
+                <div class="dash-cal-right">
+                  <div class="dash-cal-strip" id="dashDays"></div>
+                  <div class="dash-cal-footer" id="dashCalFooter">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/></svg>
+                    <span>Nothing for today</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="dash-sep" id="dashWidgetSep"></div>
+            
+            <div class="dash-widgets" id="dashWidgetsCol">
+              <div class="search-box">
+                <svg id="searchGoogleIcon" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="cursor: pointer;">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                <input type="text" id="dashSearchInput" placeholder="Search Google..." />
+              </div>
+              <div class="dash-weather weather-sunny" id="dashWeather">
+                <div class="weather-bg"></div>
+                <div class="weather-content">
+                  <div class="weather-left">
+                    <div class="weather-icon" id="weatherIcon">☀️</div>
+                    <div class="weather-temp-group">
+                      <div class="weather-temp" id="weatherTemp">--<span>°F</span></div>
+                      <div class="weather-city" id="weatherCity">Detecting...</div>
+                    </div>
+                  </div>
+                  <div class="weather-right">
+                    <div class="weather-forecast-btn" id="weatherBtn">See full forecast</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PANEL: SLIDER (VOL/BRIGHT) ═══ -->
+      <div class="panel panel-slider" id="panelSlider">
+        <div class="slider-icon" id="sliderIcon"></div>
+        <div class="slider-col">
+          <div class="slider-pct" id="sliderPct">81%</div>
+          <div class="slider-bar-container">
+            <div class="slider-dashes" id="sliderDashes"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PANEL: HOVER TICKLES ═══ -->
+      <div class="panel panel-hover" id="panelHoverToggles">
+        <div class="hover-toggles">
+          <div class="ht-btn" id="htMicToggle">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ht-icon mic-on"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+          </div>
+          <div class="ht-btn" id="htCamToggle">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ht-icon cam-on"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PANEL: MUSIC ═══ -->
+      <div class="panel panel-music" id="panelMusic">
+        <div class="mu-top">
+          <div class="mu-art" id="albumArt">
+            <img id="coverImg" src="" alt="" crossorigin="anonymous" />
+            <div class="mu-art-ph" id="albumPlaceholder">
+              <div class="mu-art-grad"></div>
+              <div class="mu-art-note">♫</div>
+            </div>
+          </div>
+          <div class="mu-info">
+            <div class="mu-title" id="songTitle">Not Playing</div>
+            <div class="mu-artist" id="songArtist">Open Spotify</div>
+          </div>
+          <div class="equalizer" id="equalizer">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="mu-seek">
+          <span class="mu-time" id="timeElapsed">-0:00</span>
+          <div class="mu-bar">
+            <div class="mu-fill" id="seekFill"></div>
+            <div class="mu-thumb" id="seekThumb"></div>
+          </div>
+          <span class="mu-time" id="timeTotal">0:00</span>
+        </div>
+        <div class="mu-controls">
+          <button class="mu-btn" id="shuffleBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
+          <button class="mu-btn skip" id="prevBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+          <button class="mu-btn play" id="playBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="mu-btn skip" id="nextBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+          <button class="mu-btn" id="queueBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></button>
+        </div>
+      </div>
+
+      <!-- ═══ PANEL: UNLOCK (Face ID) ═══ -->
+      <div class="panel panel-unlock" id="panelUnlock">
+        <div class="faceid-box">
+          <svg class="faceid-svg" viewBox="0 0 100 100">
+            <circle class="faceid-ring" cx="50" cy="50" r="40" stroke="#22c55e" stroke-width="6" fill="none"/>
+            <g class="faceid-face">
+              <line x1="36" y1="42" x2="36" y2="54" stroke="#22c55e" stroke-width="8" stroke-linecap="round"/>
+              <line x1="64" y1="42" x2="64" y2="54" stroke="#22c55e" stroke-width="8" stroke-linecap="round"/>
+              <path d="M50 46 v10 q 0 3 -4 3" stroke="#22c55e" stroke-width="6" fill="none" stroke-linecap="round"/>
+              <path d="M38 72 Q 50 82 62 72" stroke="#22c55e" stroke-width="6" fill="none" stroke-linecap="round"/>
+            </g>
+            <path class="faceid-check" d="M30 52 L45 65 L70 35" stroke="#22c55e" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" style="opacity:0;stroke-dasharray:100;stroke-dashoffset:100;"/>
+          </svg>
+          </div>
+        </div>
+
+        <!-- 🌟🌟🌟 PANEL: DO NOT DISTURB 🌟🌟🌟 -->
+        <div class="panel panel-pill" id="panelDnd">
+          <div class="pill-l">
+            <div class="dnd-icon-bg">
+              <svg class="dnd-icon-svg" viewBox="0 0 24 24" fill="white">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                <line x1="4" y1="4" x2="20" y2="20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="pill-r">
+            <span class="pill-val red" id="dndText">Silent</span>
+          </div>
+        </div>
+
+        <!-- 🌟🌟🌟 PANEL: CHARGING/LOW BATT/REC/BT MOVED HERE FOR SPACE 🌟🌟🌟 -->
+      <div class="panel panel-pill" id="panelCharging">
+        <div class="pill-l"><span class="pill-label">Charging</span></div>
+        <div class="pill-r">
+          <span class="pill-val green" id="chargingPct">100%</span>
+          <svg class="pill-batt-svg" viewBox="0 0 24 12">
+            <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
+            <rect id="chargingBattFill" x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#22c55e"/>
+            <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+        </div>
+      </div>
+      <div class="panel panel-pill" id="panelLowBattery">
+        <div class="pill-l"><span class="pill-label">Low Battery</span></div>
+        <div class="pill-r">
+          <span class="pill-val red" id="lowBattPct">20%</span>
+          <svg class="pill-batt-svg" viewBox="0 0 24 12">
+            <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
+            <rect id="lowBattFill" x="2.5" y="2.5" width="4" height="7" rx="1.5" fill="#ef4444"/>
+            <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+        </div>
+      </div>
+      <div class="panel panel-pill" id="panelRecording">
+        <div class="pill-l">
+          <div class="pill-wave" id="pillRecWave">
+            <span class="wb"></span><span class="wb"></span><span class="wb"></span><span class="wb"></span><span class="wb"></span>
+          </div>
+        </div>
+        <div class="pill-r"><span class="pill-val red" id="expRecTime">0:37</span></div>
+      </div>
+
+      <div class="panel panel-bt" id="panelBluetooth">
+        <div class="bt-title" id="btDeviceName">AirPods Pro</div>
+        <div class="bt-body">
+          <div class="bt-side">
+            <svg class="bt-batt-icon" viewBox="0 0 28 14" id="btBattLeftSvg">
+              <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
+              <rect id="btBattFillLeft" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
+              <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+              <path id="btLightningLeft" d="M13 3 L10 7.5 L12.5 7.5 L11 11 L15 6.5 L12.5 6.5 L14 3Z" fill="#0a0a0c" stroke="none"/>
+            </svg>
+            <span class="bt-pct" id="btPctLeft">100%</span>
+          </div>
+          <div class="bt-product"><img id="btProductImg" src="airpods.png" alt="AirPods" /></div>
+          <div class="bt-side">
+            <svg class="bt-batt-icon" viewBox="0 0 28 14" id="btBattRightSvg">
+              <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
+              <rect id="btBattFillRight" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
+              <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+            </svg>
+            <span class="bt-pct" id="btPctRight">100%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-btmusic" id="panelBtMusic">
+        <div class="btmu-top">
+          <img class="btmu-img" id="btmuImg" src="airpods_gen.png" alt="" />
+          <div class="btmu-info">
+            <div class="btmu-name" id="btmuName">AirPods</div>
+            <div class="btmu-batt">
+              <svg class="btmu-batt-icon" viewBox="0 0 28 14">
+                <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
+                <rect id="btmuBattFill" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
+                <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+              </svg>
+              <span class="btmu-pct" id="btmuPct">72%</span>
+            </div>
+          </div>
+        </div>
+        <div class="btmu-divider"></div>
+        <div class="btmu-music">
+          <div class="mu-top">
+            <div class="mu-art">
+              <img id="btmuCoverImg" src="" alt="" crossorigin="anonymous" />
+              <div class="mu-art-ph" id="btmuAlbumPh">
+                <div class="mu-art-grad"></div><div class="mu-art-note">♫</div>
+              </div>
+            </div>
+            <div class="mu-info">
+              <div class="mu-title" id="btmuSongTitle">Not Playing</div>
+              <div class="mu-artist" id="btmuSongArtist">Open Spotify</div>
+            </div>
+            <div class="equalizer" id="btmuEqualizer"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
+          <div class="mu-controls">
+            <button class="mu-btn skip" id="btmuPrevBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+            <button class="mu-btn play" id="btmuPlayBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+            <button class="mu-btn skip" id="btmuNextBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+
+
+  <script src="app.js"></script>
+</body>
+</html>

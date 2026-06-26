@@ -1,0 +1,44 @@
+[
+  {
+    "title": "Team Standup",
+    "date": "2026-03-07",
+    "time": "09:00",
+    "duration": 30,
+    "color": "#6C5CE7"
+  },
+  {
+    "title": "Lunch with Alex",
+    "date": "2026-03-07",
+    "time": "12:30",
+    "duration": 60,
+    "color": "#00B894"
+  },
+  {
+    "title": "Design Review",
+    "date": "2026-03-07",
+    "time": "15:00",
+    "duration": 45,
+    "color": "#FD79A8"
+  },
+  {
+    "title": "Gym Session",
+    "date": "2026-03-08",
+    "time": "07:00",
+    "duration": 60,
+    "color": "#E17055"
+  },
+  {
+    "title": "Project Deadline",
+    "date": "2026-03-09",
+    "time": "17:00",
+    "duration": 0,
+    "color": "#D63031"
+  },
+  {
+    "title": "Movie Night",
+    "date": "2026-03-09",
+    "time": "20:00",
+    "duration": 120,
+    "color": "#A29BFE"
+  }
+]

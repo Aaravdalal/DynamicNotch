@@ -1,0 +1,26 @@
+{
+  "name": "dynamic-notch",
+  "version": "1.0.0",
+  "description": "Dynamic Island-style notch overlay for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@tabler/icons": "^3.40.0",
+    "node-fetch": "^2.7.0",
+    "systeminformation": "^5.31.3",
+    "weather-js": "^2.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0"
+  },
+  "build": {
+    "appId": "com.dynamicnotch.app",
+    "productName": "Dynamic Notch",
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
