@@ -57,7 +57,7 @@ body{
 
 /* Expanded states */
 .notch.expanded{cursor:default}
-.notch.expanded[data-state="idle"]{width:740px;height:180px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="idle"]{width:740px;height:230px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="charging"],
@@ -320,38 +320,23 @@ body{
 .dash-sep{width:1px;background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.1) 80%, transparent);margin:0 24px;align-self:stretch}
 
 /* music col - MUCH WIDER */
-.dash-music{flex:2;display:flex;flex-direction:column;justify-content:center;min-width:0}
-
-.dash-now-playing{display:flex;gap:24px;align-items:center;min-width:0}
-.dash-art{
-  width:100px;height:100px;border-radius:18px;overflow:hidden;flex-shrink:0;
-  background:#1a1a2e;box-shadow:0 10px 30px rgba(0,0,0,0.7);position:relative;
-}
-.dash-art img{width:100%;height:100%;object-fit:cover;position:relative;z-index:2}
-.dash-art-placeholder{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:26px;color:rgba(255,255,255,0.4);
-  background:linear-gradient(135deg,#6366f1,#8b5cf6);
-}
+.dash-music{flex:1;display:flex;flex-direction:column;min-width:0;padding-right:12px;border-right:1px solid rgba(255,255,255,0.06)}
+.dash-art{position:relative;width:64px;height:64px;border-radius:14px;overflow:hidden;background:#1a1a2e;flex-shrink:0}
+.dash-art img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;display:none;z-index:2}
+.dash-art-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#6C5CE7,#a29bfe);opacity:0.6;font-size:24px;color:rgba(255,255,255,0.8)}
 .dash-app-icon{
-  position:absolute;bottom:-2px;right:-2px;width:28px;height:28px;
+  position:absolute;bottom:-4px;right:-4px;width:24px;height:24px;
   background:linear-gradient(135deg,#ff2d55,#ff3b30);
   border-radius:50%;display:flex;align-items:center;justify-content:center;
-  z-index:3;padding:7px;box-shadow:0 4px 12px rgba(0,0,0,0.4);
-  border:2.5px solid #000;
+  z-index:3;box-shadow:0 2px 8px rgba(0,0,0,0.5);
+  border:2px solid #000;
 }
-.dash-app-icon svg{width:100%;height:100%}
-
-.dash-meta{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;flex:2.5;text-align:center;}
-.dash-title{font-size:18px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-0.05em;line-height:1.0;color:#fff;margin-bottom:2px;max-width:320px}
-.dash-artist{font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dash-album{font-size:10px;font-weight:500;color:rgba(255,255,255,0.3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-.dash-ctrls{display:flex;gap:12px;margin-top:10px;align-items:center;color:#fff}
-.dash-ctrl{cursor:pointer;transition:transform .15s ease, opacity 0.2s;opacity:.85}
-.dash-ctrl:hover{transform:scale(1.2);opacity:1}
-.dash-ctrl.main{opacity:1;transform:scale(1.1)}
-.dash-ctrl.main:hover{transform:scale(1.3)}
+.dash-app-icon svg{width:12px;height:12px}
+.dash-meta{display:flex;flex-direction:column;justify-content:center;min-width:0;}
+.dash-title{font-size:16px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.dash-artist{font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-album{display:none}
+.dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
 /* calendar col - slimmer to make room for music */
 .dash-cal{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0}
