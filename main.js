@@ -283,6 +283,113 @@ app.whenReady().then(() => {
     });
   });
 
+  ipcMain.handle('fetch-hourly-weather', async (_, city) => {
+    return new Promise((resolve) => {
+      const https = require('https');
+      https.get(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`, (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const geo = JSON.parse(data);
+            if (!geo.results || geo.results.length === 0) return resolve(null);
+            const lat = geo.results[0].latitude;
+            const lon = geo.results[0].longitude;
+            https.get(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,weathercode&temperature_unit=fahrenheit&timezone=auto`, (res2) => {
+              let wdata = '';
+              res2.on('data', c => wdata += c);
+              res2.on('end', () => {
+                try { resolve(JSON.parse(wdata)); } catch(e) { resolve(null); }
+              });
+            });
+          } catch(e) { resolve(null); }
+        });
+      }).on('error', () => resolve(null));
+    });
+  });
+
+  ipcMain.handle('fetch-stocks', async (_, symbols) => {
+    return new Promise((resolve) => {
+      const https = require('https');
+      const results = [];
+      let completed = 0;
+      if (!symbols || symbols.length === 0) return resolve([]);
+      
+      symbols.forEach(symbol => {
+        https.get(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        }, (res) => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              const meta = json.chart.result[0].meta;
+              results.push({ symbol: meta.symbol, price: meta.regularMarketPrice, previousClose: meta.chartPreviousClose });
+            } catch(e) {}
+            completed++;
+            if (completed === symbols.length) resolve(results);
+          });
+        }).on('error', () => {
+          completed++;
+          if (completed === symbols.length) resolve(results);
+        });
+      });
+    });
+  });
+
+  ipcMain.handle('fetch-sports', async () => {
+    return new Promise((resolve) => {
+      const https = require('https');
+      https.get('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard', (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); } catch(e) { resolve(null); }
+        });
+      }).on('error', () => resolve(null));
+    });
+  });
+
+  const configPath = path.join(app.getPath('userData'), 'config.json');
+  ipcMain.handle('get-config', () => {
+    try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch(e) { return {}; }
+  });
+  ipcMain.handle('save-config', (_, cfg) => {
+    try {
+      const existing = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
+      fs.writeFileSync(configPath, JSON.stringify({ ...existing, ...cfg }));
+      return true;
+    } catch(e) { return false; }
+  });
+
+  ipcMain.handle('ask-gaming-ai', async (_, prompt, key) => {
+    return new Promise((resolve) => {
+      const https = require('https');
+      const data = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+      const req = https.request(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': data.length }
+      }, (res) => {
+        let respData = '';
+        res.on('data', c => respData += c);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(respData);
+            if (json.candidates && json.candidates[0].content) {
+              resolve(json.candidates[0].content.parts[0].text);
+            } else {
+              resolve('AI Error: Unexpected response.');
+            }
+          } catch(e) { resolve('AI Error: ' + e.message); }
+        });
+      });
+      req.on('error', (e) => resolve('API Error: ' + e.message));
+      req.write(data);
+      req.end();
+    });
+  });
+
   const { onMediaUpdate } = require('./modules/media');
   onMediaUpdate((data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
