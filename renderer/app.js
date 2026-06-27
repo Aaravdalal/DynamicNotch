@@ -565,10 +565,14 @@ function updateMusicUI() {
     coverImg.style.display = 'none';
     placeholder.style.display = 'flex';
     cAlbum.style.display = 'none';
-    document.getElementById('seekFill').style.width = '0%';
-    document.getElementById('seekThumb').style.left = '0%';
-    document.getElementById('timeElapsed').textContent = '-0:00';
-    document.getElementById('timeTotal').textContent = '0:00';
+    const seekFills = [document.getElementById('seekFill'), document.getElementById('dashSeekFill')];
+    seekFills.forEach(el => { if (el) el.style.width = '0%'; });
+    const seekThumbs = [document.getElementById('seekThumb'), document.getElementById('dashSeekThumb')];
+    seekThumbs.forEach(el => { if (el) el.style.left = '0%'; });
+    const elsElapsed = [document.getElementById('timeElapsed'), document.getElementById('dashTimeElapsed')];
+    elsElapsed.forEach(el => { if (el) el.textContent = '-0:00'; });
+    const elsTotal = [document.getElementById('timeTotal'), document.getElementById('dashTimeTotal')];
+    elsTotal.forEach(el => { if (el) el.textContent = '0:00'; });
     if (progressInterval) clearInterval(progressInterval);
   }
 }
@@ -665,29 +669,37 @@ function animateProgress() {
 }
 
 function updateScrubberUI(pct, elapsed, total) {
-  document.getElementById('seekFill').style.width = pct + '%';
-  document.getElementById('seekThumb').style.left = pct + '%';
+  const seekFills = [document.getElementById('seekFill'), document.getElementById('dashSeekFill')];
+  const seekThumbs = [document.getElementById('seekThumb'), document.getElementById('dashSeekThumb')];
   
+  seekFills.forEach(el => { if (el) el.style.width = pct + '%'; });
+  seekThumbs.forEach(el => { if (el) el.style.left = pct + '%'; });
+  
+  const elsElapsed = [document.getElementById('timeElapsed'), document.getElementById('dashTimeElapsed')];
+  const elsTotal = [document.getElementById('timeTotal'), document.getElementById('dashTimeTotal')];
+
   if (total > 0) {
-    document.getElementById('timeElapsed').textContent = `${Math.floor(elapsed/60)}:${(Math.floor(elapsed)%60).toString().padStart(2,'0')}`;
+    const elStr = `${Math.floor(elapsed/60)}:${(Math.floor(elapsed)%60).toString().padStart(2,'0')}`;
     const rem = total - elapsed;
-    document.getElementById('timeTotal').textContent = `-${Math.floor(rem/60)}:${(Math.floor(rem)%60).toString().padStart(2,'0')}`;
+    const totStr = `-${Math.floor(rem/60)}:${(Math.floor(rem)%60).toString().padStart(2,'0')}`;
+    
+    elsElapsed.forEach(el => { if (el) el.textContent = elStr; });
+    elsTotal.forEach(el => { if (el) el.textContent = totStr; });
   } else {
-    document.getElementById('timeElapsed').textContent = '';
-    document.getElementById('timeTotal').textContent = '';
+    elsElapsed.forEach(el => { if (el) el.textContent = ''; });
+    elsTotal.forEach(el => { if (el) el.textContent = ''; });
   }
 }
 
 // Set up scrubber drag events
 function setupScrubberDrag() {
-  const seekArea = document.querySelector('.mu-bar');
-  if (!seekArea) return;
+  const seekAreas = [document.querySelector('.mu-bar'), document.getElementById('dashSeekArea')];
   
   let isDown = false;
   
-  const moveScrubber = (e) => {
+  const moveScrubber = (e, area) => {
     if (!isDown) return;
-    const rect = seekArea.getBoundingClientRect();
+    const rect = area.getBoundingClientRect();
     let x = e.clientX || (e.touches && e.touches[0].clientX);
     if (x === undefined) return;
     
@@ -701,32 +713,35 @@ function setupScrubberDrag() {
     updateScrubberUI(pct, musicElapsed, curTotal);
   };
   
-  seekArea.addEventListener('mousedown', (e) => {
-    isDown = true;
-    isDraggingScrubber = true;
-    moveScrubber(e);
-  });
-  
-  window.addEventListener('mousemove', moveScrubber);
-  window.addEventListener('mouseup', () => {
-    if (isDown) {
-      isDown = false;
-      setTimeout(() => isDraggingScrubber = false, 100); // small delay to resume
-    }
-  });
-  
-  seekArea.addEventListener('touchstart', (e) => {
-    isDown = true;
-    isDraggingScrubber = true;
-    moveScrubber(e);
-  });
-  
-  window.addEventListener('touchmove', moveScrubber);
-  window.addEventListener('touchend', () => {
-    if (isDown) {
-      isDown = false;
-      setTimeout(() => isDraggingScrubber = false, 100);
-    }
+  seekAreas.forEach(seekArea => {
+    if (!seekArea) return;
+    seekArea.addEventListener('mousedown', (e) => {
+      isDown = true;
+      isDraggingScrubber = true;
+      moveScrubber(e, seekArea);
+    });
+    
+    window.addEventListener('mousemove', (e) => moveScrubber(e, seekArea));
+    window.addEventListener('mouseup', () => {
+      if (isDown) {
+        isDown = false;
+        setTimeout(() => isDraggingScrubber = false, 100); // small delay to resume
+      }
+    });
+    
+    seekArea.addEventListener('touchstart', (e) => {
+      isDown = true;
+      isDraggingScrubber = true;
+      moveScrubber(e, seekArea);
+    });
+    
+    window.addEventListener('touchmove', (e) => moveScrubber(e, seekArea));
+    window.addEventListener('touchend', () => {
+      if (isDown) {
+        isDown = false;
+        setTimeout(() => isDraggingScrubber = false, 100);
+      }
+    });
   });
 }
 
