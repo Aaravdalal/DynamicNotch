@@ -278,7 +278,7 @@ function setupInteractions() {
         if (isMicRecording) {
           isMicRecording = false;
           searchMicBtn.innerHTML = originalMicSvg;
-          dashSearchInput.placeholder = 'Transcribing...';
+          dashSearchInput.placeholder = 'Search Google...';
           if (activeMicStop) activeMicStop();
           if (processRecording) processRecording();
           return;
@@ -287,7 +287,7 @@ function setupInteractions() {
         try {
           isMicRecording = true;
           searchMicBtn.innerHTML = '<div style="width:10px;height:10px;background:var(--red);border-radius:50%;animation:pulse 1s infinite"></div>';
-          dashSearchInput.placeholder = 'Listening...';
+          dashSearchInput.placeholder = 'Recording...';
           
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
