@@ -163,52 +163,67 @@
                   </div>
                 </div>
               </div>
-              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative;">
-                <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: -6px; right: -6px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: transform 0.2s, background 0.2s; color: #000000; z-index: 10;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                </div>
-                <div class="weather-bg"></div>
-                <div class="weather-content">
-                  <div class="weather-top-row">
-                    <div class="weather-left">
-                      <div class="weather-icon" id="weatherIcon">☀️</div>
-                      <div class="weather-temp-group">
-                        <div class="weather-temp" id="weatherTemp">--<span>°F</span></div>
-                        <div class="weather-city" id="weatherCity">Detecting...</div>
+              <div class="dash-widget-viewport" id="dashWidgetViewport" style="overflow-x: hidden; position: relative; flex: 1;">
+                <div class="dash-widget-track" id="dashWidgetTrack" style="display: flex; transition: transform 0.3s ease; height: 100%;">
+                  
+                  <!-- Weather Widget -->
+                  <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; flex: 0 0 100%; min-width: 100%;">
+                    <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: -6px; right: -6px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: transform 0.2s, background 0.2s; color: #000000; z-index: 10;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </div>
+                    <div class="weather-bg"></div>
+                    <div class="weather-content">
+                      <div class="weather-left">
+                        <div class="weather-icon" id="weatherIcon">☀️</div>
+                        <div class="weather-temp-group">
+                          <div class="weather-temp" id="weatherTemp">--<span>°F</span></div>
+                          <div class="weather-city" id="weatherCity">Detecting...</div>
+                        </div>
+                      </div>
+                      <div class="weather-right">
+                        <div class="weather-forecast-btn" id="weatherBtn">See full forecast</div>
                       </div>
                     </div>
-                    <div class="weather-right">
-                      <div class="weather-forecast-btn" id="weatherBtn">See full forecast</div>
+                  </div>
+
+                  <!-- Stocks Widget (Hidden if not added yet) -->
+                  <div class="dash-stocks" id="dashStocks" style="position: relative; flex: 0 0 100%; min-width: 100%; display: none;">
+                    <div class="stocks-bg"></div>
+                    <div class="stocks-content">
+                      <div class="stocks-header">
+                        <span class="stocks-title">Watchlist</span>
+                        <div class="stocks-link-btn" id="stocksLinkBtn">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        </div>
+                      </div>
+                      <div class="stocks-grid" id="stocksGrid">
+                        <!-- Populated dynamically -->
+                        <div class="stock-item placeholder">No Watchlist</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="weather-bottom-row" id="weatherForecastRow">
-                    <!-- Forecast items injected via JS -->
-                  </div>
+
                 </div>
               </div>
 
-              <!-- Stocks Widget -->
-              <div class="dash-stocks" id="dashStocks">
-                <!-- Stock items injected via JS -->
-              </div>
-
-              <!-- Sports Widget -->
-              <div class="dash-sports" id="dashSports">
-                <div class="sports-header" id="sportsHeader">NFL</div>
-                <div class="sports-matchup" id="sportsMatchup">
-                  <div class="team team-away">
-                    <span class="team-name" id="awayTeam">--</span>
-                    <span class="team-score" id="awayScore">-</span>
-                  </div>
-                  <div class="team team-home">
-                    <span class="team-name" id="homeTeam">--</span>
-                    <span class="team-score" id="homeScore">-</span>
+              <!-- Widget Finder Overlay -->
+              <div class="widget-finder-overlay" id="widgetFinderOverlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); z-index: 50; border-radius: 20px; flex-direction: column; padding: 20px;">
+                <div class="wf-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: white;">
+                  <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Add Widget</h3>
+                  <div id="closeWidgetFinderBtn" style="cursor: pointer; background: rgba(255,255,255,0.2); padding: 4px; border-radius: 50%;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                   </div>
                 </div>
-                <div class="sports-status" id="sportsStatus"></div>
+                <div class="wf-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div class="wf-item" id="addStocksWidgetBtn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; color: white; transition: background 0.2s;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <span style="font-size: 13px; font-weight: 500;">Stocks</span>
+                  </div>
+                  <!-- Other potential widgets here -->
+                </div>
               </div>
             </div>
           </div>

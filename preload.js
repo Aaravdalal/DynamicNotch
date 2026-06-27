@@ -9,10 +9,9 @@ contextBridge.exposeInMainWorld('notchAPI', {
   getRecording: () => ipcRenderer.invoke('get-recording'),
   startSpeechRecognition: () => ipcRenderer.invoke('start-speech-recognition'),
   transcribeAudio: (pcmData) => ipcRenderer.invoke('transcribe-audio', pcmData),
+  getWatchlist: () => ipcRenderer.invoke('get-watchlist'),
+  fetchStocks: (symbols) => ipcRenderer.invoke('fetch-stocks', symbols),
   getBattery: () => ipcRenderer.invoke('get-battery'),
-  fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
-  fetchStock: (symbols) => ipcRenderer.invoke('fetch-stocks', Array.isArray(symbols) ? symbols : [symbols]),
-  fetchSports: () => ipcRenderer.invoke('fetch-sports'),
   setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
   focusWindow: () => ipcRenderer.send('focus-window'),
   onBatteryUpdate: (callback) => {

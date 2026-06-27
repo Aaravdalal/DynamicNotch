@@ -201,6 +201,53 @@ ipcMain.handle('transcribe-audio', async (e, pcmData) => {
   });
 });
 
+ipcMain.handle('get-watchlist', () => {
+  const watchlistPath = path.join(app.getPath('userData'), 'watchlist.json');
+  try {
+    if (fs.existsSync(watchlistPath)) {
+      const data = fs.readFileSync(watchlistPath, 'utf8');
+      return JSON.parse(data);
+    } else {
+      const defaultWatchlist = ['AAPL', 'MSFT', 'GOOGL', 'TSLA'];
+      fs.writeFileSync(watchlistPath, JSON.stringify(defaultWatchlist));
+      return defaultWatchlist;
+    }
+  } catch(e) {
+    return ['AAPL', 'MSFT', 'GOOGL', 'TSLA'];
+  }
+});
+
+ipcMain.handle('fetch-stocks', async (event, symbols) => {
+  const https = require('https');
+  const fetchStock = (symbol) => {
+    return new Promise((resolve) => {
+      https.get(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const result = parsed.chart.result[0];
+            const meta = result.meta;
+            const currentPrice = meta.regularMarketPrice;
+            const prevClose = meta.chartPreviousClose;
+            const change = currentPrice - prevClose;
+            const changePct = (change / prevClose) * 100;
+            resolve({ symbol, price: currentPrice, change, changePct });
+          } catch(e) {
+            resolve({ symbol, price: 0, change: 0, changePct: 0 });
+          }
+        });
+      }).on('error', () => {
+        resolve({ symbol, price: 0, change: 0, changePct: 0 });
+      });
+    });
+  };
+
+  const results = await Promise.all(symbols.map(s => fetchStock(s)));
+  return results;
+});
+
 ipcMain.handle('get-battery', async () => await getBatteryStatus());
 ipcMain.handle('get-calendar', async () => await googleCalendar.getEvents());
 ipcMain.handle('google-calendar-connect', async (e, config) => {
@@ -281,40 +328,6 @@ app.whenReady().then(() => {
         else resolve(result[0] || null);
       });
     });
-  });
-
-  const yahooFinance = require('yahoo-finance2').default;
-  ipcMain.handle('fetch-stocks', async (_, symbols) => {
-    try {
-      const results = await Promise.all(symbols.map(s => yahooFinance.quote(s)));
-      return results.map(q => ({
-        symbol: q.symbol,
-        price: q.regularMarketPrice,
-        changePercent: q.regularMarketChangePercent
-      }));
-    } catch(e) {
-      console.error('Stock fetch error', e);
-      return [];
-    }
-  });
-
-  ipcMain.handle('fetch-sports', async () => {
-    try {
-      const https = require('https');
-      return new Promise((resolve) => {
-        https.get('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch(e) { resolve(null); }
-          });
-        }).on('error', () => resolve(null));
-      });
-    } catch(e) {
-      return null;
-    }
   });
 
   const { onMediaUpdate } = require('./modules/media');

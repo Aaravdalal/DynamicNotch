@@ -1045,86 +1045,13 @@ async function fetchWeather() {
     
     document.getElementById('weatherIcon').textContent = icon;
     
-    // Populate forecast row
-    const forecastRow = document.getElementById('weatherForecastRow');
-    if (forecastRow && weatherData.forecast) {
-      forecastRow.innerHTML = '';
-      const days = weatherData.forecast.slice(0, 5);
-      days.forEach(day => {
-        const item = document.createElement('div');
-        item.className = 'weather-forecast-item';
-        
-        let dIcon = '☀️';
-        const dPhrase = (day.skytextday || '').toLowerCase();
-        if (dPhrase.includes('sunny') || dPhrase.includes('clear')) dIcon = '☀️';
-        else if (dPhrase.includes('rain') || dPhrase.includes('shower')) dIcon = '🌧️';
-        else if (dPhrase.includes('snow') || dPhrase.includes('ice')) dIcon = '❄️';
-        else dIcon = dPhrase.includes('partly') ? '⛅' : '☁️';
-        
-        item.innerHTML = `
-          <div class="wf-time">${day.shortday}</div>
-          <div class="wf-icon">${dIcon}</div>
-          <div class="wf-temp">${day.high}°</div>
-        `;
-        forecastRow.appendChild(item);
-      });
-    }
-    
   } catch(e) {
     console.error('Weather error:', e);
     document.getElementById('weatherCity').textContent = 'Location unavailable';
   }
 }
-async function fetchStocks() {
-  try {
-    const data = await window.notchAPI.fetchStock(['AAPL', 'TSLA', 'MSFT', 'GOOGL']);
-    const dashStocks = document.getElementById('dashStocks');
-    if (dashStocks && data && data.length > 0) {
-      dashStocks.innerHTML = '';
-      data.forEach(stock => {
-        const item = document.createElement('div');
-        item.className = 'stock-item';
-        const change = stock.changePercent;
-        const changeClass = change >= 0 ? 'positive' : 'negative';
-        const changeText = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
-        item.innerHTML = `
-          <div class="stock-symbol">${stock.symbol}</div>
-          <div class="stock-price">$${stock.price.toFixed(2)}</div>
-          <div class="stock-change ${changeClass}">${changeText}</div>
-        `;
-        dashStocks.appendChild(item);
-      });
-    }
-  } catch (e) {
-    console.error('Stock error', e);
-  }
-}
-
-async function fetchSports() {
-  try {
-    const data = await window.notchAPI.fetchSports();
-    if (data && data.events && data.events.length > 0) {
-      const event = data.events[0];
-      const comp = event.competitions[0];
-      const home = comp.competitors.find(c => c.homeAway === 'home');
-      const away = comp.competitors.find(c => c.homeAway === 'away');
-      
-      document.getElementById('homeTeam').textContent = home.team.abbreviation;
-      document.getElementById('homeScore').textContent = home.score;
-      document.getElementById('awayTeam').textContent = away.team.abbreviation;
-      document.getElementById('awayScore').textContent = away.score;
-      document.getElementById('sportsStatus').textContent = event.status.type.detail;
-      document.getElementById('sportsHeader').textContent = event.shortName || 'NFL';
-    }
-  } catch (e) {
-    console.error('Sports error', e);
-  }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
-  fetchStocks();
-  fetchSports();
   const weatherBtn = document.getElementById('weatherBtn');
   if (weatherBtn) {
     weatherBtn.addEventListener('click', () => {
@@ -1134,6 +1061,131 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 setInterval(fetchWeather, 3600000);
-setInterval(fetchStocks, 60000);
-setInterval(fetchSports, 60000);
+
+/* ─── Widget Carousel & Stocks ─── */
+let currentWidgetIndex = 0;
+let addedWidgets = ['weather'];
+
+function updateWidgetCarousel() {
+  const track = document.getElementById('dashWidgetTrack');
+  if (track) {
+    track.style.transform = `translateX(-${currentWidgetIndex * 100}%)`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const viewport = document.getElementById('dashWidgetViewport');
+  let swipeCooldown = false;
+  if (viewport) {
+    viewport.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        if (swipeCooldown) return;
+        
+        if (e.deltaX > 20) {
+          if (currentWidgetIndex < addedWidgets.length - 1) {
+            currentWidgetIndex++;
+            updateWidgetCarousel();
+            swipeCooldown = true;
+            setTimeout(() => swipeCooldown = false, 400);
+          }
+        } else if (e.deltaX < -20) {
+          if (currentWidgetIndex > 0) {
+            currentWidgetIndex--;
+            updateWidgetCarousel();
+            swipeCooldown = true;
+            setTimeout(() => swipeCooldown = false, 400);
+          }
+        }
+      }
+    }, { passive: false });
+  }
+
+  const addWidgetBtn = document.getElementById('addWidgetBtn');
+  const widgetFinderOverlay = document.getElementById('widgetFinderOverlay');
+  const closeWidgetFinderBtn = document.getElementById('closeWidgetFinderBtn');
+  const addStocksWidgetBtn = document.getElementById('addStocksWidgetBtn');
+
+  if (addWidgetBtn && widgetFinderOverlay) {
+    addWidgetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      widgetFinderOverlay.style.display = 'flex';
+    });
+  }
+
+  if (closeWidgetFinderBtn && widgetFinderOverlay) {
+    closeWidgetFinderBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      widgetFinderOverlay.style.display = 'none';
+    });
+  }
+
+  if (addStocksWidgetBtn) {
+    addStocksWidgetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!addedWidgets.includes('stocks')) {
+        addedWidgets.push('stocks');
+        const dashStocks = document.getElementById('dashStocks');
+        if (dashStocks) {
+          dashStocks.style.display = 'flex';
+        }
+        currentWidgetIndex = addedWidgets.length - 1;
+        updateWidgetCarousel();
+        fetchStocks();
+      }
+      widgetFinderOverlay.style.display = 'none';
+    });
+  }
+
+  const stocksLinkBtn = document.getElementById('stocksLinkBtn');
+  if (stocksLinkBtn) {
+    stocksLinkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.notchAPI.openUrl('https://www.google.com/finance/');
+      collapse();
+    });
+  }
+});
+
+async function fetchStocks() {
+  try {
+    const grid = document.getElementById('stocksGrid');
+    if (!grid) return;
+    
+    const watchlist = await window.notchAPI.getWatchlist();
+    if (!watchlist || watchlist.length === 0) {
+      grid.innerHTML = '<div class="stock-item placeholder" style="cursor:pointer;" id="emptyWatchlistBtn">No Watchlist. Click to add on Google Finance.</div>';
+      const emptyBtn = document.getElementById('emptyWatchlistBtn');
+      if (emptyBtn) {
+        emptyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.notchAPI.openUrl('https://www.google.com/finance/');
+          collapse();
+        });
+      }
+      return;
+    }
+
+    const stockData = await window.notchAPI.fetchStocks(watchlist);
+    if (!stockData || stockData.length === 0) return;
+    
+    grid.innerHTML = '';
+    stockData.slice(0, 4).forEach(stock => {
+      const isPos = stock.change >= 0;
+      grid.innerHTML += `
+        <div class="stock-item">
+          <span class="stock-symbol">${stock.symbol}</span>
+          <div class="stock-price-group">
+            <span class="stock-price">$${stock.price.toFixed(2)}</span>
+            <span class="stock-change ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${stock.changePct.toFixed(2)}%</span>
+          </div>
+        </div>
+      `;
+    });
+    
+  } catch (err) {
+    console.error('Error fetching stocks:', err);
+  }
+}
+
 

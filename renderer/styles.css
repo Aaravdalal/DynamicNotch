@@ -691,11 +691,20 @@ body{
 .wf-temp { font-size: 12px; color: #fff; font-weight: 600; }
 
 /* Stocks Widget */
-.dash-stocks { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; gap: 8px; }
-.stock-item { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
-.stock-symbol { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 700; }
-.stock-price { font-size: 12px; color: #fff; font-weight: 600; }
-.stock-change { font-size: 10px; font-weight: 600; }
+.dash-stocks { background: linear-gradient(135deg, #1f2937, #111827); border-radius: 16px; position: relative; overflow: hidden; display: flex; }
+.stocks-bg { position: absolute; top:0; left:0; right:0; bottom:0; opacity:0.8; border-radius: inherit; }
+.stocks-content { position: relative; z-index:1; display:flex; flex-direction:column; width: 100%; padding:10px 12px; }
+.stocks-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.stocks-title { font-size:10px; font-weight:700; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing: 0.05em; }
+.stocks-link-btn { cursor:pointer; color:rgba(255,255,255,0.5); transition:color 0.2s; display:flex; align-items:center; }
+.stocks-link-btn:hover { color:#fff; }
+.stocks-grid { display:grid; grid-template-columns: 1fr 1fr; gap:6px; }
+.stock-item { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:6px 8px; border-radius:8px; }
+.stock-item.placeholder { grid-column: 1 / -1; justify-content: center; font-size: 12px; color: rgba(255,255,255,0.4); padding: 12px; }
+.stock-symbol { font-size:12px; font-weight:700; color:#fff; }
+.stock-price-group { display:flex; flex-direction:column; align-items:flex-end; }
+.stock-price { font-size:11px; font-weight:600; color:#fff; }
+.stock-change { font-size: 9px; font-weight: 600; }
 .stock-change.positive { color: var(--green); }
 .stock-change.negative { color: var(--red); }
 
