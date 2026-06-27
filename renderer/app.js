@@ -1063,18 +1063,18 @@ async function fetchWeather() {
       let hr = t.getHours();
       const ampm = hr >= 12 ? 'PM' : 'AM';
       hr = hr % 12; if (hr === 0) hr = 12;
-      const timeStr = \`\${hr}\${ampm}\`;
+      const timeStr = `${hr}${ampm}`;
       const tTemp = Math.round(weatherData.hourly.temperature_2m[i]);
       const tCode = weatherData.hourly.weathercode[i];
       const tIcon = getWeatherFromCode(tCode).icon;
       
       const item = document.createElement('div');
       item.className = 'hourly-item';
-      item.innerHTML = \`
-        <span>\${timeStr}</span>
-        <span class="hourly-icon">\${tIcon}</span>
-        <span>\${tTemp}°</span>
-      \`;
+      item.innerHTML = `
+        <span>${timeStr}</span>
+        <span class="hourly-icon">${tIcon}</span>
+        <span>${tTemp}°</span>
+      `;
       hourlyContainer.appendChild(item);
     }
   } catch(e) {
@@ -1098,11 +1098,11 @@ async function updateStocks() {
       
       const item = document.createElement('div');
       item.className = 'stock-item';
-      item.innerHTML = \`
-        <span class="stock-sym">\${s.symbol}</span>
-        <span class="stock-price">$\${s.price.toFixed(2)}</span>
-        <span class="stock-change \${cls}">\${sign}\${pct.toFixed(2)}%</span>
-      \`;
+      item.innerHTML = `
+        <span class="stock-sym">${s.symbol}</span>
+        <span class="stock-price">$${s.price.toFixed(2)}</span>
+        <span class="stock-change ${cls}">${sign}${pct.toFixed(2)}%</span>
+      `;
       container.appendChild(item);
     });
   } catch (e) {
@@ -1123,11 +1123,11 @@ async function updateSports() {
       const status = e.status.type.shortDetail;
       const item = document.createElement('div');
       item.className = 'sport-item';
-      item.innerHTML = \`
-        <div class="sport-team"><span>\${away.team.abbreviation}</span><span>\${away.score}</span></div>
-        <div class="sport-team"><span>\${home.team.abbreviation}</span><span>\${home.score}</span></div>
-        <div class="sport-status">\${status}</div>
-      \`;
+      item.innerHTML = `
+        <div class="sport-team"><span>${away.team.abbreviation}</span><span>${away.score}</span></div>
+        <div class="sport-team"><span>${home.team.abbreviation}</span><span>${home.score}</span></div>
+        <div class="sport-status">${status}</div>
+      `;
       container.appendChild(item);
     });
   } catch (e) {
@@ -1169,25 +1169,25 @@ async function askAI() {
   if (!prompt) return;
   gamingInput.value = '';
   
-  gamingChat.innerHTML += \`<div class="gaming-msg user">\${prompt}</div>\`;
+  gamingChat.innerHTML += `<div class="gaming-msg user">${prompt}</div>`;
   gamingChat.scrollTop = gamingChat.scrollHeight;
   
   const config = await window.notchAPI.getConfig();
   const key = config.geminiKey;
   if (!key) {
-    gamingChat.innerHTML += \`<div class="gaming-msg ai">API key missing! Set geminiKey in config.json.</div>\`;
+    gamingChat.innerHTML += `<div class="gaming-msg ai">API key missing! Set geminiKey in config.json.</div>`;
     gamingChat.scrollTop = gamingChat.scrollHeight;
     return;
   }
   
-  gamingChat.innerHTML += \`<div class="gaming-msg ai" id="loadingAi">Thinking...</div>\`;
+  gamingChat.innerHTML += `<div class="gaming-msg ai" id="loadingAi">Thinking...</div>`;
   gamingChat.scrollTop = gamingChat.scrollHeight;
   
-  const fullPrompt = \`I am playing \${activeGame}. \${prompt}. Keep it short and under 2 sentences.\`;
+  const fullPrompt = `I am playing ${activeGame}. ${prompt}. Keep it short and under 2 sentences.`;
   const reply = await window.notchAPI.askGamingAI(fullPrompt, key);
   
   document.getElementById('loadingAi').remove();
-  gamingChat.innerHTML += \`<div class="gaming-msg ai">\${reply}</div>\`;
+  gamingChat.innerHTML += `<div class="gaming-msg ai">${reply}</div>`;
   gamingChat.scrollTop = gamingChat.scrollHeight;
 }
 
