@@ -610,55 +610,61 @@ body{
 .weather-cloudy {
   background: linear-gradient(135deg, #7c98b3, #435b73);
 }
+.weather-snowy {
+  background: linear-gradient(135deg, #a5c3e6, #809ebb);
+}
 .weather-bg {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-  border-radius: 16px;
+  z-index: 0;
   opacity: 0.8;
-  z-index: 1;
+  border-radius: inherit;
 }
-.weather-sunny .weather-bg { background: linear-gradient(135deg, #2A8BCA 0%, #4FA8E6 100%); }
-.weather-rainy .weather-bg { background: linear-gradient(135deg, #4A5568 0%, #2D3748 100%); }
 .weather-content {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
   width: 100%;
-}
-.weather-top-row {
-  display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  width: 100%;
 }
 .weather-left {
   display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.weather-icon {
+  font-size: 32px;
+}
+.weather-temp-group {
+  display: flex;
   flex-direction: column;
 }
-.weather-city {
-  font-size: 14px;
-  font-weight: 500;
-  color: #fff;
-  opacity: 0.9;
-}
 .weather-temp {
-  font-size: 36px;
-  font-weight: 300;
+  font-size: 28px;
+  font-weight: 700;
   color: #fff;
-  line-height: 1.1;
+  line-height: 1;
   display: flex;
   align-items: flex-start;
 }
 .weather-temp span {
-  font-size: 16px;
+  font-size: 14px;
+  margin-top: 2px;
+}
+.weather-city {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
   margin-top: 4px;
-  margin-left: 2px;
+}
+.weather-desc {
+  display: none;
 }
 .weather-right {
   display: flex;
+  align-items: center;
+}
 .weather-forecast-btn {
   background: rgba(255, 255, 255, 0.15);
   padding: 6px 12px;
@@ -676,88 +682,28 @@ body{
  display: none !important;
 }
 
+/* Weather Forecast */
+.weather-top-row { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 8px; }
+.weather-bottom-row { display: flex; justify-content: space-between; width: 100%; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; }
+.weather-forecast-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wf-time { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; }
+.wf-icon { font-size: 14px; }
+.wf-temp { font-size: 12px; color: #fff; font-weight: 600; }
+
 /* Stocks Widget */
-.dash-stocks {
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  padding: 12px;
-  gap: 8px;
-}
-.stocks-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.stocks-ticker {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-}
-.stocks-price {
-  font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-}
-.stocks-bottom {
-  display: flex;
-  justify-content: flex-end;
-}
-.stocks-change {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.1);
-}
-.stocks-change.positive {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.15);
-}
-.stocks-change.negative {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.15);
-}
+.dash-stocks { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; gap: 8px; }
+.stock-item { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+.stock-symbol { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 700; }
+.stock-price { font-size: 12px; color: #fff; font-weight: 600; }
+.stock-change { font-size: 10px; font-weight: 600; }
+.stock-change.positive { color: var(--green); }
+.stock-change.negative { color: var(--red); }
 
 /* Sports Widget */
-.dash-sports {
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  padding: 12px;
-  gap: 8px;
-}
-.sports-header {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(255,255,255,0.5);
-  text-transform: uppercase;
-}
-.sports-matchup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.team {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.team-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-}
-.team-score {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-}
-.sports-status {
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(255,255,255,0.6);
-  margin-top: 4px;
-}
+.dash-sports { display: flex; flex-direction: column; justify-content: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; }
+.sports-header { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.5); text-transform: uppercase; margin-bottom: 6px; text-align: center; }
+.sports-matchup { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.team { display: flex; align-items: center; gap: 8px; }
+.team-name { font-size: 14px; font-weight: 700; color: #fff; }
+.team-score { font-size: 16px; font-weight: 800; color: #fff; }
+.sports-status { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; text-align: center; }

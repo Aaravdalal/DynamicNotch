@@ -282,24 +282,37 @@ app.whenReady().then(() => {
       });
     });
   });
-  
+
   const yahooFinance = require('yahoo-finance2').default;
-  ipcMain.handle('fetch-stock', async (_, ticker) => {
+  ipcMain.handle('fetch-stocks', async (_, symbols) => {
     try {
-      const result = await yahooFinance.quote(ticker || 'AAPL');
-      return result;
-    } catch(err) {
-      return null;
+      const results = await Promise.all(symbols.map(s => yahooFinance.quote(s)));
+      return results.map(q => ({
+        symbol: q.symbol,
+        price: q.regularMarketPrice,
+        changePercent: q.regularMarketChangePercent
+      }));
+    } catch(e) {
+      console.error('Stock fetch error', e);
+      return [];
     }
   });
 
   ipcMain.handle('fetch-sports', async () => {
     try {
-      // Defaulting to NFL scores for the sports widget
-      const res = await fetch('http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
-      const data = await res.json();
-      return data;
-    } catch(err) {
+      const https = require('https');
+      return new Promise((resolve) => {
+        https.get('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch(e) { resolve(null); }
+          });
+        }).on('error', () => resolve(null));
+      });
+    } catch(e) {
       return null;
     }
   });

@@ -1049,7 +1049,6 @@ async function fetchWeather() {
     const forecastRow = document.getElementById('weatherForecastRow');
     if (forecastRow && weatherData.forecast) {
       forecastRow.innerHTML = '';
-      // Slice the next 5 days
       const days = weatherData.forecast.slice(0, 5);
       days.forEach(day => {
         const item = document.createElement('div');
@@ -1076,16 +1075,25 @@ async function fetchWeather() {
     document.getElementById('weatherCity').textContent = 'Location unavailable';
   }
 }
-
 async function fetchStocks() {
   try {
-    const data = await window.notchAPI.fetchStock('AAPL');
-    if (data && data.regularMarketPrice) {
-      document.getElementById('stocksPrice').textContent = '$' + data.regularMarketPrice.toFixed(2);
-      const change = data.regularMarketChangePercent;
-      const changeEl = document.getElementById('stocksChange');
-      changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
-      changeEl.className = 'stocks-change ' + (change >= 0 ? 'positive' : 'negative');
+    const data = await window.notchAPI.fetchStock(['AAPL', 'TSLA', 'MSFT', 'GOOGL']);
+    const dashStocks = document.getElementById('dashStocks');
+    if (dashStocks && data && data.length > 0) {
+      dashStocks.innerHTML = '';
+      data.forEach(stock => {
+        const item = document.createElement('div');
+        item.className = 'stock-item';
+        const change = stock.changePercent;
+        const changeClass = change >= 0 ? 'positive' : 'negative';
+        const changeText = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+        item.innerHTML = `
+          <div class="stock-symbol">${stock.symbol}</div>
+          <div class="stock-price">$${stock.price.toFixed(2)}</div>
+          <div class="stock-change ${changeClass}">${changeText}</div>
+        `;
+        dashStocks.appendChild(item);
+      });
     }
   } catch (e) {
     console.error('Stock error', e);
@@ -1106,11 +1114,13 @@ async function fetchSports() {
       document.getElementById('awayTeam').textContent = away.team.abbreviation;
       document.getElementById('awayScore').textContent = away.score;
       document.getElementById('sportsStatus').textContent = event.status.type.detail;
+      document.getElementById('sportsHeader').textContent = event.shortName || 'NFL';
     }
   } catch (e) {
     console.error('Sports error', e);
   }
 }
+
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
   fetchStocks();
@@ -1124,6 +1134,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 setInterval(fetchWeather, 3600000);
-setInterval(fetchStocks, 60000); // 1 min
-setInterval(fetchSports, 60000); // 1 min
+setInterval(fetchStocks, 60000);
+setInterval(fetchSports, 60000);
 

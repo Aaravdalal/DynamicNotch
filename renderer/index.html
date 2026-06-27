@@ -174,12 +174,14 @@
                 <div class="weather-content">
                   <div class="weather-top-row">
                     <div class="weather-left">
-                      <div class="weather-city" id="weatherCity">Detecting...</div>
-                      <div class="weather-temp" id="weatherTemp">--<span>°</span></div>
+                      <div class="weather-icon" id="weatherIcon">☀️</div>
+                      <div class="weather-temp-group">
+                        <div class="weather-temp" id="weatherTemp">--<span>°F</span></div>
+                        <div class="weather-city" id="weatherCity">Detecting...</div>
+                      </div>
                     </div>
                     <div class="weather-right">
-                      <div class="weather-icon" id="weatherIcon">☀️</div>
-                      <div class="weather-alert" id="weatherAlert"></div>
+                      <div class="weather-forecast-btn" id="weatherBtn">See full forecast</div>
                     </div>
                   </div>
                   <div class="weather-bottom-row" id="weatherForecastRow">
@@ -190,18 +192,12 @@
 
               <!-- Stocks Widget -->
               <div class="dash-stocks" id="dashStocks">
-                <div class="stocks-top">
-                  <div class="stocks-ticker" id="stocksTicker">AAPL</div>
-                  <div class="stocks-price" id="stocksPrice">--</div>
-                </div>
-                <div class="stocks-bottom">
-                  <div class="stocks-change" id="stocksChange">--</div>
-                </div>
+                <!-- Stock items injected via JS -->
               </div>
 
               <!-- Sports Widget -->
               <div class="dash-sports" id="dashSports">
-                <div class="sports-header">NFL</div>
+                <div class="sports-header" id="sportsHeader">NFL</div>
                 <div class="sports-matchup" id="sportsMatchup">
                   <div class="team team-away">
                     <span class="team-name" id="awayTeam">--</span>
