@@ -586,26 +586,6 @@ body{
   width: 100%;
   user-select: text;
   -webkit-user-select: text;
-  -webkit-app-region: no-drag;
-}
-.search-box input::placeholder {
-  color: rgba(0, 0, 0, 0.4);
-}
-.dash-weather {
-  display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  padding: 12px;
-  gap: 12px;
-  position: relative;
-  min-height: 80px;
-}
-.weather-sunny {
-  background: linear-gradient(135deg, #4fa8ff, #1d6bc2);
-}
-.weather-rainy {
-  background: linear-gradient(135deg, #4a5c75, #222b36);
 }
 .weather-cloudy {
   background: linear-gradient(135deg, #7c98b3, #435b73);
@@ -691,22 +671,86 @@ body{
 .wf-temp { font-size: 12px; color: #fff; font-weight: 600; }
 
 /* Stocks Widget */
-.dash-stocks { background: linear-gradient(135deg, #1f2937, #111827); border-radius: 16px; position: relative; overflow: hidden; display: flex; }
-.stocks-bg { position: absolute; top:0; left:0; right:0; bottom:0; opacity:0.8; border-radius: inherit; }
-.stocks-content { position: relative; z-index:1; display:flex; flex-direction:column; width: 100%; padding:10px 12px; }
-.stocks-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-.stocks-title { font-size:10px; font-weight:700; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing: 0.05em; }
-.stocks-link-btn { cursor:pointer; color:rgba(255,255,255,0.5); transition:color 0.2s; display:flex; align-items:center; }
-.stocks-link-btn:hover { color:#fff; }
-.stocks-grid { display:grid; grid-template-columns: 1fr 1fr; gap:6px; }
-.stock-item { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:6px 8px; border-radius:8px; }
-.stock-item.placeholder { grid-column: 1 / -1; justify-content: center; font-size: 12px; color: rgba(255,255,255,0.4); padding: 12px; }
-.stock-symbol { font-size:12px; font-weight:700; color:#fff; }
-.stock-price-group { display:flex; flex-direction:column; align-items:flex-end; }
-.stock-price { font-size:11px; font-weight:600; color:#fff; }
-.stock-change { font-size: 9px; font-weight: 600; }
+.dash-stocks { display: flex; width: 100%; height: 100%; justify-content: center; align-items: center; background: linear-gradient(135deg, #111, #1a1a1a); border-radius: 16px; padding: 8px; cursor: pointer; }
+.stocks-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 6px; }
+.stock-item { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+.stock-item:hover { background: rgba(255,255,255,0.1); }
+.stock-symbol { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 700; line-height: 1; }
+.stock-price { font-size: 12px; color: #fff; font-weight: 600; line-height: 1; margin-top: 2px; }
+.stock-change { font-size: 10px; font-weight: 600; margin-top: 1px; }
 .stock-change.positive { color: var(--green); }
 .stock-change.negative { color: var(--red); }
+
+/* Widget Finder */
+.widget-finder-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15,15,15,0.95);
+  backdrop-filter: blur(8px);
+  z-index: 50;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+.wf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+.wf-close {
+  cursor: pointer;
+  color: #aaa;
+  transition: color 0.2s;
+  display: flex;
+}
+.wf-close:hover {
+  color: #fff;
+}
+.wf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.wf-item {
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.1);
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.wf-item:hover {
+  background: rgba(255,255,255,0.15);
+}
+.wf-icon {
+  font-size: 18px;
+  margin-right: 12px;
+}
+.wf-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+.wf-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4285F4;
+}
+.wf-status.added {
+  color: #888;
+}
 
 /* Sports Widget */
 .dash-sports { display: flex; flex-direction: column; justify-content: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; }

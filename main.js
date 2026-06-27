@@ -12,6 +12,8 @@ let mainWindow;
 let tray;
 const userDataPath = app.getPath('userData');
 const profileImageStore = path.join(userDataPath, 'profileImage.json');
+const watchlistFile = path.join(userDataPath, 'watchlist.json');
+const yahooFinance = require('yahoo-finance2').default;
 
 const WIN_WIDTH = 1100;
 const WIN_HEIGHT = 450; 
@@ -201,53 +203,6 @@ ipcMain.handle('transcribe-audio', async (e, pcmData) => {
   });
 });
 
-ipcMain.handle('get-watchlist', () => {
-  const watchlistPath = path.join(app.getPath('userData'), 'watchlist.json');
-  try {
-    if (fs.existsSync(watchlistPath)) {
-      const data = fs.readFileSync(watchlistPath, 'utf8');
-      return JSON.parse(data);
-    } else {
-      const defaultWatchlist = ['AAPL', 'MSFT', 'GOOGL', 'TSLA'];
-      fs.writeFileSync(watchlistPath, JSON.stringify(defaultWatchlist));
-      return defaultWatchlist;
-    }
-  } catch(e) {
-    return ['AAPL', 'MSFT', 'GOOGL', 'TSLA'];
-  }
-});
-
-ipcMain.handle('fetch-stocks', async (event, symbols) => {
-  const https = require('https');
-  const fetchStock = (symbol) => {
-    return new Promise((resolve) => {
-      https.get(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            const result = parsed.chart.result[0];
-            const meta = result.meta;
-            const currentPrice = meta.regularMarketPrice;
-            const prevClose = meta.chartPreviousClose;
-            const change = currentPrice - prevClose;
-            const changePct = (change / prevClose) * 100;
-            resolve({ symbol, price: currentPrice, change, changePct });
-          } catch(e) {
-            resolve({ symbol, price: 0, change: 0, changePct: 0 });
-          }
-        });
-      }).on('error', () => {
-        resolve({ symbol, price: 0, change: 0, changePct: 0 });
-      });
-    });
-  };
-
-  const results = await Promise.all(symbols.map(s => fetchStock(s)));
-  return results;
-});
-
 ipcMain.handle('get-battery', async () => await getBatteryStatus());
 ipcMain.handle('get-calendar', async () => await googleCalendar.getEvents());
 ipcMain.handle('google-calendar-connect', async (e, config) => {
@@ -328,6 +283,38 @@ app.whenReady().then(() => {
         else resolve(result[0] || null);
       });
     });
+  });
+
+  ipcMain.handle('get-watchlist', async () => {
+    try {
+      if (fs.existsSync(watchlistFile)) {
+        return JSON.parse(fs.readFileSync(watchlistFile, 'utf8'));
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  ipcMain.handle('set-watchlist', async (_, list) => {
+    try {
+      fs.writeFileSync(watchlistFile, JSON.stringify(list));
+      return true;
+    } catch (e) { return false; }
+  });
+
+  ipcMain.handle('get-stocks', async (_, symbols) => {
+    try {
+      if (!symbols || symbols.length === 0) return [];
+      const results = await Promise.all(symbols.map(sym => yahooFinance.quote(sym)));
+      return results.filter(r => r).map(r => ({
+        symbol: r.symbol,
+        price: r.regularMarketPrice,
+        change: r.regularMarketChange,
+        changePercent: r.regularMarketChangePercent
+      }));
+    } catch (e) {
+      console.error('[Stocks API Error]', e);
+      return [];
+    }
   });
 
   const { onMediaUpdate } = require('./modules/media');

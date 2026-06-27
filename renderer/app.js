@@ -1052,140 +1052,196 @@ async function fetchWeather() {
 }
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
-  const weatherBtn = document.getElementById('weatherBtn');
-  if (weatherBtn) {
-    weatherBtn.addEventListener('click', () => {
-      window.notchAPI.openUrl('https://weather.com/');
-      collapse();
-    });
-  }
-});
-setInterval(fetchWeather, 3600000);
-
-/* ─── Widget Carousel & Stocks ─── */
-let currentWidgetIndex = 0;
-let addedWidgets = ['weather'];
-
-function updateWidgetCarousel() {
-  const track = document.getElementById('dashWidgetTrack');
-  if (track) {
-    track.style.transform = `translateX(-${currentWidgetIndex * 100}%)`;
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const viewport = document.getElementById('dashWidgetViewport');
-  let swipeCooldown = false;
-  if (viewport) {
-    viewport.addEventListener('wheel', (e) => {
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        if (swipeCooldown) return;
+    const weatherBtn = document.getElementById('weatherBtn');
+    if (weatherBtn) {
+      weatherBtn.addEventListener('click', () => {
+        window.notchAPI.openUrl('https://weather.com/');
+        collapse();
+      });
+    }
+  });
+  setInterval(fetchWeather, 3600000);
+  
+  /* ─── Widget Carousel & Stocks ─── */
+  let activeWidgets = ['weather'];
+  let currentWidgetIndex = 0;
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    const track = document.getElementById('widgetTrack');
+    const viewport = document.getElementById('widgetCarousel');
+    
+    // Swipe Logic
+    let isSwiping = false;
+    let startX = 0;
+    
+    if (viewport && track) {
+      // Trackpad two-finger swipe
+      viewport.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          e.preventDefault();
+          if (e.deltaX > 20) {
+            // Swipe Left (Next)
+            goToWidget(currentWidgetIndex + 1);
+          } else if (e.deltaX < -20) {
+            // Swipe Right (Prev)
+            goToWidget(currentWidgetIndex - 1);
+          }
+        }
+      }, { passive: false });
+      
+      // Mouse drag swipe
+      viewport.addEventListener('mousedown', e => {
+        isSwiping = true;
+        startX = e.clientX;
+      });
+      window.addEventListener('mousemove', e => {
+        if (!isSwiping) return;
+        const diffX = e.clientX - startX;
+        if (diffX < -40) {
+          goToWidget(currentWidgetIndex + 1);
+          isSwiping = false;
+        } else if (diffX > 40) {
+          goToWidget(currentWidgetIndex - 1);
+          isSwiping = false;
+        }
+      });
+      window.addEventListener('mouseup', () => { isSwiping = false; });
+    }
+    
+    function goToWidget(index) {
+      if (index < 0) index = 0;
+      if (index >= activeWidgets.length) index = activeWidgets.length - 1;
+      currentWidgetIndex = index;
+      if (track) {
+        track.style.transform = `translateX(-${currentWidgetIndex * 100}%)`;
+      }
+    }
+    
+    // Widget Finder
+    const addWidgetBtn = document.getElementById('addWidgetBtn');
+    const widgetFinder = document.getElementById('widgetFinder');
+    const wfCloseBtn = document.getElementById('wfCloseBtn');
+    
+    if (addWidgetBtn && widgetFinder) {
+      addWidgetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        widgetFinder.style.display = 'flex';
+      });
+    }
+    if (wfCloseBtn) {
+      wfCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        widgetFinder.style.display = 'none';
+      });
+    }
+    
+    // Handle Widget Selection
+    document.querySelectorAll('.wf-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const widgetId = item.getAttribute('data-widget');
         
-        if (e.deltaX > 20) {
-          if (currentWidgetIndex < addedWidgets.length - 1) {
-            currentWidgetIndex++;
-            updateWidgetCarousel();
-            swipeCooldown = true;
-            setTimeout(() => swipeCooldown = false, 400);
-          }
-        } else if (e.deltaX < -20) {
-          if (currentWidgetIndex > 0) {
-            currentWidgetIndex--;
-            updateWidgetCarousel();
-            swipeCooldown = true;
-            setTimeout(() => swipeCooldown = false, 400);
-          }
+        if (activeWidgets.includes(widgetId)) {
+          // Already added, maybe navigate to it
+          const idx = activeWidgets.indexOf(widgetId);
+          goToWidget(idx);
+          widgetFinder.style.display = 'none';
+          return;
         }
-      }
-    }, { passive: false });
-  }
-
-  const addWidgetBtn = document.getElementById('addWidgetBtn');
-  const widgetFinderOverlay = document.getElementById('widgetFinderOverlay');
-  const closeWidgetFinderBtn = document.getElementById('closeWidgetFinderBtn');
-  const addStocksWidgetBtn = document.getElementById('addStocksWidgetBtn');
-
-  if (addWidgetBtn && widgetFinderOverlay) {
-    addWidgetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      widgetFinderOverlay.style.display = 'flex';
-    });
-  }
-
-  if (closeWidgetFinderBtn && widgetFinderOverlay) {
-    closeWidgetFinderBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      widgetFinderOverlay.style.display = 'none';
-    });
-  }
-
-  if (addStocksWidgetBtn) {
-    addStocksWidgetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!addedWidgets.includes('stocks')) {
-        addedWidgets.push('stocks');
-        const dashStocks = document.getElementById('dashStocks');
-        if (dashStocks) {
-          dashStocks.style.display = 'flex';
+        
+        activeWidgets.push(widgetId);
+        
+        // Unhide pane
+        const pane = document.getElementById(`pane-${widgetId}`);
+        if (pane) pane.style.display = 'flex';
+        
+        // Update track width
+        if (track) {
+          track.style.width = `${activeWidgets.length * 100}%`;
+          // Each pane is 1/N of track
+          document.querySelectorAll('.widget-pane').forEach(p => {
+            if (activeWidgets.includes(p.id.replace('pane-', ''))) {
+               p.style.width = `${100 / activeWidgets.length}%`;
+            }
+          });
         }
-        currentWidgetIndex = addedWidgets.length - 1;
-        updateWidgetCarousel();
-        fetchStocks();
-      }
-      widgetFinderOverlay.style.display = 'none';
+        
+        // Update status in finder
+        const statusEl = document.getElementById(`wf-status-${widgetId}`);
+        if (statusEl) {
+          statusEl.textContent = 'Added';
+          statusEl.classList.add('added');
+        }
+        
+        if (widgetId === 'stocks') {
+          fetchStocks();
+        }
+        
+        widgetFinder.style.display = 'none';
+        goToWidget(activeWidgets.length - 1);
+      });
     });
-  }
-
-  const stocksLinkBtn = document.getElementById('stocksLinkBtn');
-  if (stocksLinkBtn) {
-    stocksLinkBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      window.notchAPI.openUrl('https://www.google.com/finance/');
-      collapse();
-    });
-  }
-});
-
-async function fetchStocks() {
-  try {
+    
+    // Stocks Widget Logic
+    const dashStocks = document.getElementById('dashStocks');
+    if (dashStocks) {
+      dashStocks.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const watchlist = await window.notchAPI.getWatchlist();
+        if (watchlist.length === 0) {
+          window.notchAPI.openUrl('https://www.google.com/finance');
+          collapse();
+        } else {
+          // Maybe open a more detailed view if needed, or just finance home
+          window.notchAPI.openUrl('https://www.google.com/finance');
+          collapse();
+        }
+      });
+    }
+  });
+  
+  async function fetchStocks() {
     const grid = document.getElementById('stocksGrid');
     if (!grid) return;
     
-    const watchlist = await window.notchAPI.getWatchlist();
-    if (!watchlist || watchlist.length === 0) {
-      grid.innerHTML = '<div class="stock-item placeholder" style="cursor:pointer;" id="emptyWatchlistBtn">No Watchlist. Click to add on Google Finance.</div>';
-      const emptyBtn = document.getElementById('emptyWatchlistBtn');
-      if (emptyBtn) {
-        emptyBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          window.notchAPI.openUrl('https://www.google.com/finance/');
-          collapse();
-        });
+    try {
+      const watchlist = await window.notchAPI.getWatchlist();
+      if (watchlist.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/3; display: flex; align-items: center; justify-content: center; height: 100%; color: #888; font-size: 11px; text-align: center; padding: 0 10px;">No stocks in watchlist.<br/>Click to add via Google Finance.</div>';
+        return;
       }
-      return;
-    }
-
-    const stockData = await window.notchAPI.fetchStocks(watchlist);
-    if (!stockData || stockData.length === 0) return;
-    
-    grid.innerHTML = '';
-    stockData.slice(0, 4).forEach(stock => {
-      const isPos = stock.change >= 0;
-      grid.innerHTML += `
-        <div class="stock-item">
-          <span class="stock-symbol">${stock.symbol}</span>
-          <div class="stock-price-group">
-            <span class="stock-price">$${stock.price.toFixed(2)}</span>
-            <span class="stock-change ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${stock.changePct.toFixed(2)}%</span>
+      
+      const toFetch = watchlist.slice(0, 4); // Fetch up to 4
+      const stocksData = await window.notchAPI.getStocks(toFetch);
+      
+      grid.innerHTML = '';
+      stocksData.forEach(stock => {
+        const isPos = stock.change >= 0;
+        const colorClass = isPos ? 'positive' : 'negative';
+        const sign = isPos ? '+' : '';
+        const price = stock.price ? stock.price.toFixed(2) : '--';
+        const change = stock.change ? stock.change.toFixed(2) : '--';
+        const changePct = stock.changePercent ? stock.changePercent.toFixed(2) : '--';
+        
+        grid.innerHTML += `
+          <div class="stock-item">
+            <div class="stock-symbol">${stock.symbol}</div>
+            <div class="stock-price">$${price}</div>
+            <div class="stock-change ${colorClass}">${sign}${change} (${sign}${changePct}%)</div>
           </div>
-        </div>
-      `;
-    });
-    
-  } catch (err) {
-    console.error('Error fetching stocks:', err);
+        `;
+      });
+      
+    } catch (e) {
+      console.error('Failed to fetch stocks', e);
+      grid.innerHTML = '<div style="grid-column: 1/3; color: var(--red); font-size: 11px; text-align: center;">Error fetching stocks</div>';
+    }
   }
-}
-
+  
+  // Refresh stocks periodically if pane is visible
+  setInterval(() => {
+    if (activeWidgets.includes('stocks')) {
+      fetchStocks();
+    }
+  }, 60000);
 
