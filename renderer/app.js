@@ -1052,196 +1052,51 @@ async function fetchWeather() {
 }
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
-    const weatherBtn = document.getElementById('weatherBtn');
-    if (weatherBtn) {
-      weatherBtn.addEventListener('click', () => {
-        window.notchAPI.openUrl('https://weather.com/');
-        collapse();
-      });
-    }
-  });
-  setInterval(fetchWeather, 3600000);
-  
-  /* ─── Widget Carousel & Stocks ─── */
-  let activeWidgets = ['weather'];
-  let currentWidgetIndex = 0;
-  
-  document.addEventListener('DOMContentLoaded', () => {
-    const track = document.getElementById('widgetTrack');
-    const viewport = document.getElementById('widgetCarousel');
-    
-    // Swipe Logic
-    let isSwiping = false;
-    let startX = 0;
-    
-    if (viewport && track) {
-      // Trackpad two-finger swipe
-      viewport.addEventListener('wheel', (e) => {
-        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-          e.preventDefault();
-          if (e.deltaX > 20) {
-            // Swipe Left (Next)
-            goToWidget(currentWidgetIndex + 1);
-          } else if (e.deltaX < -20) {
-            // Swipe Right (Prev)
-            goToWidget(currentWidgetIndex - 1);
-          }
-        }
-      }, { passive: false });
-      
-      // Mouse drag swipe
-      viewport.addEventListener('mousedown', e => {
-        isSwiping = true;
-        startX = e.clientX;
-      });
-      window.addEventListener('mousemove', e => {
-        if (!isSwiping) return;
-        const diffX = e.clientX - startX;
-        if (diffX < -40) {
-          goToWidget(currentWidgetIndex + 1);
-          isSwiping = false;
-        } else if (diffX > 40) {
-          goToWidget(currentWidgetIndex - 1);
-          isSwiping = false;
-        }
-      });
-      window.addEventListener('mouseup', () => { isSwiping = false; });
-    }
-    
-    function goToWidget(index) {
-      if (index < 0) index = 0;
-      if (index >= activeWidgets.length) index = activeWidgets.length - 1;
-      currentWidgetIndex = index;
-      if (track) {
-        track.style.transform = `translateX(-${currentWidgetIndex * 100}%)`;
-      }
-    }
-    
-    // Widget Finder
-    const addWidgetBtn = document.getElementById('addWidgetBtn');
-    const widgetFinder = document.getElementById('widgetFinder');
-    const wfCloseBtn = document.getElementById('wfCloseBtn');
-    
-    if (addWidgetBtn && widgetFinder) {
-      addWidgetBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        widgetFinder.style.display = 'flex';
-      });
-    }
-    if (wfCloseBtn) {
-      wfCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        widgetFinder.style.display = 'none';
-      });
-    }
-    
-    // Handle Widget Selection
-    document.querySelectorAll('.wf-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const widgetId = item.getAttribute('data-widget');
-        
-        if (activeWidgets.includes(widgetId)) {
-          // Already added, maybe navigate to it
-          const idx = activeWidgets.indexOf(widgetId);
-          goToWidget(idx);
-          widgetFinder.style.display = 'none';
-          return;
-        }
-        
-        activeWidgets.push(widgetId);
-        
-        // Unhide pane
-        const pane = document.getElementById(`pane-${widgetId}`);
-        if (pane) pane.style.display = 'flex';
-        
-        // Update track width
-        if (track) {
-          track.style.width = `${activeWidgets.length * 100}%`;
-          // Each pane is 1/N of track
-          document.querySelectorAll('.widget-pane').forEach(p => {
-            if (activeWidgets.includes(p.id.replace('pane-', ''))) {
-               p.style.width = `${100 / activeWidgets.length}%`;
-            }
-          });
-        }
-        
-        // Update status in finder
-        const statusEl = document.getElementById(`wf-status-${widgetId}`);
-        if (statusEl) {
-          statusEl.textContent = 'Added';
-          statusEl.classList.add('added');
-        }
-        
-        if (widgetId === 'stocks') {
-          fetchStocks();
-        }
-        
-        widgetFinder.style.display = 'none';
-        goToWidget(activeWidgets.length - 1);
-      });
+  const weatherBtn = document.getElementById('weatherBtn');
+  if (weatherBtn) {
+    weatherBtn.addEventListener('click', () => {
+      window.notchAPI.openUrl('https://weather.com/');
+      collapse();
     });
-    
-    // Stocks Widget Logic
-    const dashStocks = document.getElementById('dashStocks');
-    if (dashStocks) {
-      dashStocks.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const watchlist = await window.notchAPI.getWatchlist();
-        if (watchlist.length === 0) {
-          window.notchAPI.openUrl('https://www.google.com/finance');
-          collapse();
-        } else {
-          // Maybe open a more detailed view if needed, or just finance home
-          window.notchAPI.openUrl('https://www.google.com/finance');
-          collapse();
-        }
-      });
-    }
-  });
-  
-  async function fetchStocks() {
-    const grid = document.getElementById('stocksGrid');
-    if (!grid) return;
-    
-    try {
-      const watchlist = await window.notchAPI.getWatchlist();
-      if (watchlist.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/3; display: flex; align-items: center; justify-content: center; height: 100%; color: #888; font-size: 11px; text-align: center; padding: 0 10px;">No stocks in watchlist.<br/>Click to add via Google Finance.</div>';
-        return;
-      }
-      
-      const toFetch = watchlist.slice(0, 4); // Fetch up to 4
-      const stocksData = await window.notchAPI.getStocks(toFetch);
-      
-      grid.innerHTML = '';
-      stocksData.forEach(stock => {
-        const isPos = stock.change >= 0;
-        const colorClass = isPos ? 'positive' : 'negative';
-        const sign = isPos ? '+' : '';
-        const price = stock.price ? stock.price.toFixed(2) : '--';
-        const change = stock.change ? stock.change.toFixed(2) : '--';
-        const changePct = stock.changePercent ? stock.changePercent.toFixed(2) : '--';
-        
-        grid.innerHTML += `
-          <div class="stock-item">
-            <div class="stock-symbol">${stock.symbol}</div>
-            <div class="stock-price">$${price}</div>
-            <div class="stock-change ${colorClass}">${sign}${change} (${sign}${changePct}%)</div>
-          </div>
-        `;
-      });
-      
-    } catch (e) {
-      console.error('Failed to fetch stocks', e);
-      grid.innerHTML = '<div style="grid-column: 1/3; color: var(--red); font-size: 11px; text-align: center;">Error fetching stocks</div>';
+  }
+});
+setInterval(fetchWeather, 3600000);
+
+// Media Controls and Updates
+window.notchAPI.onMediaUpdate((data) => {
+  const applyText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+  const applySrc = (id, src) => { const el = document.getElementById(id); if (el) el.src = src; };
+  const toggleDisplay = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? 'flex' : 'none'; };
+
+  const title = data.playing ? data.title : 'Not Playing';
+  const artist = data.playing ? data.artist : '';
+  const art = data.playing && data.artUrl ? data.artUrl : '';
+
+  applyText('dashSongTitle', title); applyText('dashSongArtist', artist); applySrc('dashCoverImg', art); toggleDisplay('dashEqualizer', data.playing);
+  applyText('songTitle', title); applyText('songArtist', artist); applySrc('coverImg', art); toggleDisplay('equalizer', data.playing);
+  applyText('btmuSongTitle', title); applyText('btmuSongArtist', artist); applySrc('btmuCoverImg', art); toggleDisplay('btmuEqualizer', data.playing);
+
+  const cSongTitle = document.getElementById('cSongTitle');
+  if (cSongTitle) {
+    if (data.playing) {
+      cSongTitle.innerText = data.artist + ' - ' + data.title;
+      cSongTitle.style.display = 'block';
+    } else {
+      cSongTitle.innerText = '';
+      cSongTitle.style.display = 'none';
     }
   }
-  
-  // Refresh stocks periodically if pane is visible
-  setInterval(() => {
-    if (activeWidgets.includes('stocks')) {
-      fetchStocks();
-    }
-  }, 60000);
+});
 
+const setupMediaControls = (playId, prevId, nextId) => {
+  const playBtn = document.getElementById(playId);
+  const prevBtn = document.getElementById(prevId);
+  const nextBtn = document.getElementById(nextId);
+  if (playBtn) playBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
+  if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
+  if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
+};
+
+setupMediaControls('dashPlayBtn', 'dashPrevBtn', 'dashNextBtn');
+setupMediaControls('playBtn', 'prevBtn', 'nextBtn');
+setupMediaControls('btmuPlayBtn', 'btmuPrevBtn', 'btmuNextBtn');

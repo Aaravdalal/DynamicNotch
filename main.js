@@ -12,8 +12,6 @@ let mainWindow;
 let tray;
 const userDataPath = app.getPath('userData');
 const profileImageStore = path.join(userDataPath, 'profileImage.json');
-const watchlistFile = path.join(userDataPath, 'watchlist.json');
-const yahooFinance = require('yahoo-finance2').default;
 
 const WIN_WIDTH = 1100;
 const WIN_HEIGHT = 450; 
@@ -283,38 +281,6 @@ app.whenReady().then(() => {
         else resolve(result[0] || null);
       });
     });
-  });
-
-  ipcMain.handle('get-watchlist', async () => {
-    try {
-      if (fs.existsSync(watchlistFile)) {
-        return JSON.parse(fs.readFileSync(watchlistFile, 'utf8'));
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  ipcMain.handle('set-watchlist', async (_, list) => {
-    try {
-      fs.writeFileSync(watchlistFile, JSON.stringify(list));
-      return true;
-    } catch (e) { return false; }
-  });
-
-  ipcMain.handle('get-stocks', async (_, symbols) => {
-    try {
-      if (!symbols || symbols.length === 0) return [];
-      const results = await Promise.all(symbols.map(sym => yahooFinance.quote(sym)));
-      return results.filter(r => r).map(r => ({
-        symbol: r.symbol,
-        price: r.regularMarketPrice,
-        change: r.regularMarketChange,
-        changePercent: r.regularMarketChangePercent
-      }));
-    } catch (e) {
-      console.error('[Stocks API Error]', e);
-      return [];
-    }
   });
 
   const { onMediaUpdate } = require('./modules/media');
