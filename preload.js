@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('notchAPI', {
   googleCalendarConnect: (config) => ipcRenderer.invoke('google-calendar-connect', config),
   getBluetooth: () => ipcRenderer.invoke('get-bluetooth'),
   getRecording: () => ipcRenderer.invoke('get-recording'),
+  startSpeechRecognition: () => ipcRenderer.invoke('start-speech-recognition'),
+  transcribeAudio: (pcmData) => ipcRenderer.invoke('transcribe-audio', pcmData),
   getBattery: () => ipcRenderer.invoke('get-battery'),
   setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
   focusWindow: () => ipcRenderer.send('focus-window'),
@@ -39,5 +41,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   loadProfileImage: () => ipcRenderer.invoke('load-profile-image'),
   openCalendar: () => ipcRenderer.invoke('open-calendar'),
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
-  fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city)
+  fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
+  simulateWinH: () => ipcRenderer.invoke('simulate-win-h')
 });

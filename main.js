@@ -37,6 +37,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false
     },
   });
 
@@ -139,8 +140,67 @@ ipcMain.handle('set-sys-val', async (_, type, val) => {
   const p = spawn(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
   return true;
 });
+
+ipcMain.handle('simulate-win-h', async () => {
+  require('child_process').execFile(path.join(__dirname, 'scripts', 'sys-monitor.exe'), ['winH']);
+  return true;
+});
+
 ipcMain.handle('get-bluetooth', async () => await getBluetoothDevices());
 ipcMain.handle('get-recording', async () => await getRecordingStatus());
+
+ipcMain.handle('start-speech-recognition', async () => {
+  return new Promise((resolve) => {
+    const proc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'speech-recognizer.ps1')], { windowsHide: true });
+    
+    let resultText = '';
+    proc.stdout.on('data', (data) => {
+      const output = data.toString();
+      if (output.includes('RESULT:')) {
+        const text = output.split('RESULT:')[1].trim();
+        resultText = text;
+        resolve(text);
+      }
+    });
+    
+    proc.on('close', () => {
+      if (!resultText) resolve('');
+    });
+  });
+});
+
+ipcMain.handle('transcribe-audio', async (e, pcmData) => {
+  return new Promise((resolve) => {
+    const https = require('https');
+    const url = 'https://www.google.com/speech-api/v2/recognize?client=chromium&lang=en-US&key=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw';
+    const req = https.request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'audio/l16; rate=16000'
+      }
+    }, (res) => {
+      let resultText = '';
+      res.on('data', chunk => resultText += chunk.toString());
+      res.on('end', () => {
+        try {
+          const lines = resultText.split('\n').filter(l => l.trim().length > 0);
+          const result = JSON.parse(lines[lines.length - 1]);
+          if (result.result && result.result.length > 0 && result.result[0].alternative) {
+            resolve(result.result[0].alternative[0].transcript);
+          } else {
+            resolve('');
+          }
+        } catch(err) {
+          resolve('');
+        }
+      });
+    });
+    req.on('error', () => resolve(''));
+    req.write(Buffer.from(pcmData));
+    req.end();
+  });
+});
+
 ipcMain.handle('get-battery', async () => await getBatteryStatus());
 ipcMain.handle('get-calendar', async () => await googleCalendar.getEvents());
 ipcMain.handle('google-calendar-connect', async (e, config) => {
@@ -192,6 +252,17 @@ ipcMain.handle('select-profile-image', async () => {
   });
 
 app.whenReady().then(() => {
+  const { session } = require('electron');
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    return true;
+  });
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(true);
+  });
+  session.defaultSession.setDevicePermissionHandler((details) => {
+    return true;
+  });
+
   ipcMain.handle('open-url', (_, url) => {
     require('child_process').exec(`powershell -NoProfile -Command "Start-Process chrome -ArgumentList '${url}'"`, (err) => {
       if (err) require('electron').shell.openExternal(url);

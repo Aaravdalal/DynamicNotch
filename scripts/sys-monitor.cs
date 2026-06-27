@@ -110,8 +110,23 @@ namespace SysMonitor
             catch { return -1; }
         }
 
+        [DllImport("user32.dll")]
+        public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+
         static void Main(string[] args)
         {
+            if (args.Length >= 1)
+            {
+                if (args[0] == "winH")
+                {
+                    keybd_event(0x5B, 0, 0, 0); // WIN down
+                    keybd_event(0x48, 0, 0, 0); // H down
+                    keybd_event(0x48, 0, 2, 0); // H up
+                    keybd_event(0x5B, 0, 2, 0); // WIN up
+                    return;
+                }
+            }
+
             if (args.Length >= 2)
             {
                 string type = args[0];
@@ -185,7 +200,7 @@ namespace SysMonitor
                 {
                     if (isUserActive)
                     {
-                        if (Math.Abs(bright - lastBright) >= 3) 
+                        if (Math.Abs(bright - lastBright) >= 9) 
                         {
                             Console.WriteLine("BRIGHT|" + bright);
                         }

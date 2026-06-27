@@ -33,17 +33,17 @@ body{
   content: '';
   position: absolute;
   top: 0;
-  width: 16px;
+  width: 17px;
   height: 16px;
   pointer-events: none;
 }
 .notch::before {
   left: -16px;
-  background: radial-gradient(circle at 0 100%, transparent 16px, var(--bg) 16.5px);
+  background: radial-gradient(circle at 0 100%, transparent 16px, var(--bg) 16.2px);
 }
 .notch::after {
   right: -16px;
-  background: radial-gradient(circle at 100% 100%, transparent 16px, var(--bg) 16.5px);
+  background: radial-gradient(circle at 100% 100%, transparent 16px, var(--bg) 16.2px);
 }
 
 /* Removed old :has based sizing for gradients */
@@ -361,14 +361,24 @@ body{
 .dash-month-large{display:flex;align-items:center;justify-content:center;gap:4px;font-size:42px;font-weight:900;letter-spacing:-0.06em;color:#fff;line-height:0.8;opacity:0.95;}
 .cal-arrow{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.2s;font-size:14px;background:rgba(255,255,255,0.1);border-radius:50%;padding:4px}
 .cal-arrow:hover{opacity:1;background:rgba(255,255,255,0.2)}
-.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:6px}
+.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:6px;max-width:180px;}
 
-.dash-cal-strip{display:flex;justify-content:flex-start;gap:10px}
+.dash-cal-strip{
+  display:flex;
+  justify-content:flex-start;
+  gap:10px;
+  overflow-x:auto;
+  scrollbar-width:none; /* Firefox */
+  scroll-behavior: smooth;
+}
+.dash-cal-strip::-webkit-scrollbar {
+  display:none; /* Chrome/Safari */
+}
 .day{
   display:flex;flex-direction:column;align-items:center;
   color:rgba(255,255,255,0.3);font-size:10px;font-weight:700;gap:6px;
   padding:0;transition:all .2s ease;
-  letter-spacing:0.02em;width:28px;
+  letter-spacing:0.02em;min-width:28px;
 }
 .day span:last-child{font-size:18px;font-weight:900;letter-spacing:-0.02em;line-height:1;color:rgba(255,255,255,0.15)}
 .day.active span:last-child{
@@ -486,6 +496,14 @@ body{
   gap: 12px;
   padding: 4px 12px 4px 0;
 }
+.search-box-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 36px;
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -494,9 +512,64 @@ body{
   padding: 8px 12px;
   gap: 8px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
-  transition: background 0.2s, box-shadow 0.2s;
-  position: relative;
-  z-index: 1;
+  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), background 0.2s, box-shadow 0.2s;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.search-mic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+}
+
+/* Invisible hit area to prevent hover flicker when it moves */
+.search-mic::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: -48px;
+  right: -10px;
+  background: transparent;
+}
+
+.search-mic svg {
+  transition: transform 0.2s;
+  z-index: 2;
+}
+
+.search-box-container:has(.search-mic:hover) .search-mic {
+  right: -42px;
+  width: 36px;
+  height: 36px;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.search-box-container:has(.search-mic:hover) .search-box {
+  width: calc(100% - 48px);
+}
+
+.search-mic:hover svg {
+  transform: scale(1.1);
 }
 
 .search-box:focus-within {
@@ -526,7 +599,6 @@ body{
   padding: 12px;
   gap: 12px;
   position: relative;
-  overflow: hidden;
   min-height: 80px;
 }
 .weather-sunny {
@@ -546,6 +618,7 @@ body{
   top: 0; left: 0; right: 0; bottom: 0;
   z-index: 0;
   opacity: 0.8;
+  border-radius: inherit;
 }
 .weather-content {
   position: relative;

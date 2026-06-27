@@ -151,6 +151,8 @@ function collapse() {
   decideState(); // Refresh sub-notch
 }
 
+let isMicRecording = false;
+
 /* ─── Interactions ─── */
 function setupInteractions() {
   notch.addEventListener('mouseenter', () => {
@@ -261,6 +263,107 @@ function setupInteractions() {
       }
     });
   }
+
+  const searchMicBtn = document.getElementById('searchMicBtn');
+  const dashSearchInput = document.getElementById('dashSearchInput');
+
+  let activeMicStop = null;
+  let processRecording = null;
+
+  if (searchMicBtn) {
+    const originalMicSvg = searchMicBtn.innerHTML;
+    searchMicBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        
+        if (isMicRecording) {
+          isMicRecording = false;
+          searchMicBtn.innerHTML = originalMicSvg;
+          dashSearchInput.placeholder = 'Transcribing...';
+          if (activeMicStop) activeMicStop();
+          if (processRecording) processRecording();
+          return;
+        }
+        
+        try {
+          isMicRecording = true;
+          searchMicBtn.innerHTML = '<div style="width:10px;height:10px;background:var(--red);border-radius:50%;animation:pulse 1s infinite"></div>';
+          dashSearchInput.placeholder = 'Listening...';
+          
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          
+          await audioCtx.audioWorklet.addModule('audio-processor.js');
+          
+          const source = audioCtx.createMediaStreamSource(stream);
+          const workletNode = new AudioWorkletNode(audioCtx, 'audio-processor');
+          
+          let pcmChunks = [];
+          workletNode.port.onmessage = (e) => {
+              if (isMicRecording) {
+                  pcmChunks.push(new Int16Array(e.data));
+              }
+          };
+          
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.value = 0;
+          source.connect(workletNode);
+          workletNode.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          let isDone = false;
+          activeMicStop = () => {
+            if (isDone) return;
+            isDone = true;
+            workletNode.disconnect();
+            source.disconnect();
+            stream.getTracks().forEach(t => t.stop());
+            if (audioCtx.state !== 'closed') audioCtx.close();
+          };
+          
+          processRecording = async () => {
+            const totalLen = pcmChunks.reduce((acc, val) => acc + val.length, 0);
+            if (totalLen === 0) {
+              dashSearchInput.placeholder = 'Search Google...';
+              return;
+            }
+            
+            const pcmData = new Int16Array(totalLen);
+            let offset = 0;
+            for (let chunk of pcmChunks) {
+                pcmData.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            try {
+              const transcribedText = await window.notchAPI.transcribeAudio(pcmData.buffer);
+              console.log('[App] Speech Recognition returned:', transcribedText);
+              
+              if (transcribedText) {
+                dashSearchInput.value = transcribedText;
+                executeSearch();
+              } else {
+                dashSearchInput.placeholder = 'Did not catch that...';
+                setTimeout(() => {
+                  if (!isMicRecording) dashSearchInput.placeholder = 'Search Google...';
+                }, 2000);
+              }
+            } catch (err) {
+              dashSearchInput.placeholder = 'Mic error!';
+              setTimeout(() => {
+                if (!isMicRecording) dashSearchInput.placeholder = 'Search Google...';
+              }, 2000);
+            }
+          };
+          
+        } catch (err) {
+          console.error('Speech recognition error:', err);
+          dashSearchInput.placeholder = 'Mic error!';
+          isMicRecording = false;
+          searchMicBtn.innerHTML = originalMicSvg;
+          setTimeout(() => dashSearchInput.placeholder = 'Search Google...', 2000);
+        }
+    });
+  }
 }
 
 /* ─── Clock / Calendar ─── */
@@ -288,12 +391,21 @@ function updateClock() {
   const strip = document.getElementById('dashDays');
   if (strip) {
     strip.innerHTML = '';
-    for (let i = -2; i <= 2; i++) {
+    // Render past 7 days and future 14 days to allow scrolling
+    for (let i = -7; i <= 14; i++) {
       const d = new Date(target); d.setDate(target.getDate() + i);
       const name = shortDays[d.getDay()];
       const num = d.getDate().toString().padStart(2, '0');
+      // Ensure the 'active' day is when i === 0
       strip.innerHTML += `<div class="day${i===0?' active':''}"><span>${name}</span><span>${num}</span></div>`;
     }
+    // Set scroll position to center the active item (roughly)
+    setTimeout(() => {
+      const activeEl = strip.querySelector('.active');
+      if (activeEl) {
+        strip.scrollLeft = activeEl.offsetLeft - strip.offsetWidth / 2 + activeEl.offsetWidth / 2;
+      }
+    }, 0);
   }
 }
 
@@ -613,7 +725,7 @@ function showBatteryToast(bat) {
 
   // Unplugged normal
   if (isExpanded) collapse();
-  battToastTimeout = setTimeout(() => { battToastTimeout = null; decideState(); }, 4000);
+  decideState();
 }
 
 /* ─── Bluetooth ─── */
@@ -704,6 +816,7 @@ function showBluetoothToast(device) {
 
 /* ─── Recording ─── */
 async function fetchRecording() {
+  if (isMicRecording) return; // Prevent overwriting local mic state
   try {
     const data = await window.notchAPI.getRecording();
     const was = recordingData.recording;
@@ -868,6 +981,7 @@ if (window.notchAPI.onSysBright) window.notchAPI.onSysBright(v => showSlider(v, 
 
 const dashSearchInput = document.getElementById('dashSearchInput');
 const searchGoogleIcon = document.getElementById('searchGoogleIcon');
+const searchMicBtn = document.getElementById('searchMicBtn');
 
 function executeSearch() {
   if (dashSearchInput && dashSearchInput.value.trim() !== '') {
@@ -893,6 +1007,8 @@ if (dashSearchInput) {
 if (searchGoogleIcon) {
   searchGoogleIcon.addEventListener('click', executeSearch);
 }
+
+// Duplicate mic listener removed to avoid overriding custom logic
 
 async function fetchWeather() {
   try {
