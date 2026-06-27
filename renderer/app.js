@@ -1063,6 +1063,16 @@ document.addEventListener('DOMContentLoaded', () => {
 setInterval(fetchWeather, 3600000);
 
 // Media Controls and Updates
+let mediaProgressInterval = null;
+let currentMediaTime = 0;
+let fakeMediaDuration = 180; // default 3 mins
+
+const formatTime = (seconds) => {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
 window.notchAPI.onMediaUpdate((data) => {
   const applyText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
   const applySrc = (id, src) => { const el = document.getElementById(id); if (el) el.src = src; };
@@ -1085,6 +1095,47 @@ window.notchAPI.onMediaUpdate((data) => {
       cSongTitle.innerText = '';
       cSongTitle.style.display = 'none';
     }
+  }
+
+  // Handle Dynamic Progress Simulation
+  if (mediaProgressInterval) clearInterval(mediaProgressInterval);
+  if (!data.playing) {
+    currentMediaTime = 0;
+    const progressFills = document.querySelectorAll('.dash-progress-fill');
+    progressFills.forEach(el => el.style.width = '0%');
+    const times = document.querySelectorAll('.dash-time');
+    if (times.length >= 2) {
+      times[0].innerText = '0:00';
+      times[1].innerText = '--:--';
+    }
+  } else {
+    // Reset time if song changes
+    if (!window.lastSongTitle || window.lastSongTitle !== data.title) {
+        currentMediaTime = 0;
+        window.lastSongTitle = data.title;
+        fakeMediaDuration = 150 + Math.floor(Math.random() * 90); // randomize duration between 2:30 and 4:00
+    }
+    
+    // Immediate UI update so it doesn't wait 1s
+    const updateProgressUI = () => {
+      const times = document.querySelectorAll('.dash-time');
+      if (times.length >= 2) {
+          times[0].innerText = formatTime(currentMediaTime);
+          times[1].innerText = '-' + formatTime(fakeMediaDuration - currentMediaTime);
+      }
+      const pct = (currentMediaTime / fakeMediaDuration) * 100;
+      const progressFills = document.querySelectorAll('.dash-progress-fill');
+      progressFills.forEach(el => el.style.width = `${pct}%`);
+    };
+    
+    updateProgressUI();
+    mediaProgressInterval = setInterval(() => {
+        currentMediaTime += 1;
+        if (currentMediaTime >= fakeMediaDuration) {
+            currentMediaTime = 0; // loop
+        }
+        updateProgressUI();
+    }, 1000);
   }
 });
 
