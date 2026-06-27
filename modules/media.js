@@ -5,7 +5,7 @@ const EventEmitter = require('events');
 class MediaMonitor extends EventEmitter {
     constructor() {
         super();
-        this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', source: '' };
+        this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, source: '' };
         this.cachedArt = {};
         this.monitorProc = null;
         this.buffer = '';
@@ -96,17 +96,17 @@ class MediaMonitor extends EventEmitter {
                 this.lastMediaInfo = {
                     playing: true,
                     paused: false,
-                    title: detected.track,
                     artist: detected.artist,
                     track: detected.track,
-                    artUrl,
+                    artUrl: artUrl.url,
+                    duration: artUrl.duration,
                     source: detected.source
                 };
                 this.emit('update', this.lastMediaInfo);
             }
         } else if (this.lastMediaInfo.playing && !this.clearTimeout) {
             this.clearTimeout = setTimeout(() => {
-                this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', source: '' };
+                this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, source: '' };
                 this.emit('update', this.lastMediaInfo);
                 this.clearTimeout = null;
             }, 5000);
@@ -122,12 +122,14 @@ class MediaMonitor extends EventEmitter {
             const res = await fetch(url);
             const json = await res.json();
             if (json.results && json.results.length > 0) {
-                const art = json.results[0].artworkUrl100.replace('100x100', '300x300');
-                this.cachedArt[query] = art;
-                return art;
+                const url = json.results[0].artworkUrl100.replace('100x100', '300x300');
+                const duration = json.results[0].trackTimeMillis || 0;
+                const artInfo = { url, duration };
+                this.cachedArt[query] = artInfo;
+                return artInfo;
             }
         } catch (e) {}
-        return '';
+        return { url: '', duration: 0 };
     }
 
     getMediaInfo() {

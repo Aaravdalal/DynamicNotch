@@ -198,6 +198,8 @@ function setupInteractions() {
   document.getElementById('prevBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('prev'); }, 300));
   document.getElementById('playBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('playpause'); }, 300));
   document.getElementById('nextBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('next'); }, 300));
+  
+  setupScrubberDrag();
 
   // Combined BT-Music controls
   document.getElementById('btmuPrevBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('prev'); }, 300));
@@ -626,18 +628,108 @@ function updateVisualizerWithPeak(peak) {
   else lastKnownPeak = (lastKnownPeak * 0.7) + (peak * 0.3);
 }
 
+let musicDuration = 0;
+let musicElapsed = 0;
+let isDraggingScrubber = false;
+
 function animateProgress() {
   if (progressInterval) clearInterval(progressInterval);
+  
+  if (mediaData.duration && mediaData.duration > 0) {
+    musicDuration = Math.floor(mediaData.duration / 1000);
+  } else {
+    musicDuration = 0; // Default or hidden if unknown
+  }
+
+  // If a new track started playing, reset elapsed
+  if (mediaData.playing && !isDraggingScrubber && (fakePct === 0 || lastTrack !== mediaData.track)) {
+    musicElapsed = 0;
+    lastTrack = mediaData.track;
+  }
+
   progressInterval = setInterval(() => {
-    if (!mediaData.playing) { clearInterval(progressInterval); return; }
-    fakePct += 0.25; if (fakePct > 100) fakePct = 0;
-    document.getElementById('seekFill').style.width = fakePct+'%';
-    document.getElementById('seekThumb').style.left = fakePct+'%';
-    const el = Math.floor((fakePct/100)*210), rem = 210-el;
-    document.getElementById('timeElapsed').textContent = `-${Math.floor(rem/60)}:${(rem%60).toString().padStart(2,'0')}`;
-    document.getElementById('timeTotal').textContent = `${Math.floor(el/60)}:${(el%60).toString().padStart(2,'0')}`;
+    if (!mediaData.playing || isDraggingScrubber) return;
+    
+    if (musicDuration > 0) {
+      musicElapsed += 0.5;
+      if (musicElapsed > musicDuration) musicElapsed = 0;
+      fakePct = (musicElapsed / musicDuration) * 100;
+    } else {
+      fakePct += 0.25; if (fakePct > 100) fakePct = 0;
+      musicElapsed = Math.floor((fakePct/100) * 210);
+      musicDuration = 210;
+    }
+
+    updateScrubberUI(fakePct, musicElapsed, musicDuration);
   }, 500);
 }
+
+function updateScrubberUI(pct, elapsed, total) {
+  document.getElementById('seekFill').style.width = pct + '%';
+  document.getElementById('seekThumb').style.left = pct + '%';
+  
+  if (total > 0) {
+    document.getElementById('timeElapsed').textContent = `${Math.floor(elapsed/60)}:${(Math.floor(elapsed)%60).toString().padStart(2,'0')}`;
+    const rem = total - elapsed;
+    document.getElementById('timeTotal').textContent = `-${Math.floor(rem/60)}:${(Math.floor(rem)%60).toString().padStart(2,'0')}`;
+  } else {
+    document.getElementById('timeElapsed').textContent = '';
+    document.getElementById('timeTotal').textContent = '';
+  }
+}
+
+// Set up scrubber drag events
+function setupScrubberDrag() {
+  const seekArea = document.querySelector('.mu-bar');
+  if (!seekArea) return;
+  
+  let isDown = false;
+  
+  const moveScrubber = (e) => {
+    if (!isDown) return;
+    const rect = seekArea.getBoundingClientRect();
+    let x = e.clientX || (e.touches && e.touches[0].clientX);
+    if (x === undefined) return;
+    
+    let pct = ((x - rect.left) / rect.width) * 100;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    
+    fakePct = pct;
+    const curTotal = musicDuration > 0 ? musicDuration : 210;
+    musicElapsed = (pct / 100) * curTotal;
+    updateScrubberUI(pct, musicElapsed, curTotal);
+  };
+  
+  seekArea.addEventListener('mousedown', (e) => {
+    isDown = true;
+    isDraggingScrubber = true;
+    moveScrubber(e);
+  });
+  
+  window.addEventListener('mousemove', moveScrubber);
+  window.addEventListener('mouseup', () => {
+    if (isDown) {
+      isDown = false;
+      setTimeout(() => isDraggingScrubber = false, 100); // small delay to resume
+    }
+  });
+  
+  seekArea.addEventListener('touchstart', (e) => {
+    isDown = true;
+    isDraggingScrubber = true;
+    moveScrubber(e);
+  });
+  
+  window.addEventListener('touchmove', moveScrubber);
+  window.addEventListener('touchend', () => {
+    if (isDown) {
+      isDown = false;
+      setTimeout(() => isDraggingScrubber = false, 100);
+    }
+  });
+}
+
 
 /* ─── Battery ─── */
 function handleBatteryEvent(bat) {
@@ -1062,92 +1154,3 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 setInterval(fetchWeather, 3600000);
 
-// Media Controls and Updates
-let mediaProgressInterval = null;
-let currentMediaTime = 0;
-let fakeMediaDuration = 180; // default 3 mins
-
-const formatTime = (seconds) => {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
-};
-
-window.notchAPI.onMediaUpdate((data) => {
-  const applyText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
-  const applySrc = (id, src) => { const el = document.getElementById(id); if (el) el.src = src; };
-  const toggleDisplay = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? 'flex' : 'none'; };
-
-  const title = data.playing ? data.title : 'Not Playing';
-  const artist = data.playing ? data.artist : '';
-  const art = data.playing && data.artUrl ? data.artUrl : '';
-
-  applyText('dashSongTitle', title); applyText('dashSongArtist', artist); applySrc('dashCoverImg', art); toggleDisplay('dashEqualizer', data.playing);
-  applyText('songTitle', title); applyText('songArtist', artist); applySrc('coverImg', art); toggleDisplay('equalizer', data.playing);
-  applyText('btmuSongTitle', title); applyText('btmuSongArtist', artist); applySrc('btmuCoverImg', art); toggleDisplay('btmuEqualizer', data.playing);
-
-  const cSongTitle = document.getElementById('cSongTitle');
-  if (cSongTitle) {
-    if (data.playing) {
-      cSongTitle.innerText = data.artist + ' - ' + data.title;
-      cSongTitle.style.display = 'block';
-    } else {
-      cSongTitle.innerText = '';
-      cSongTitle.style.display = 'none';
-    }
-  }
-
-  // Handle Dynamic Progress Simulation
-  if (mediaProgressInterval) clearInterval(mediaProgressInterval);
-  if (!data.playing) {
-    currentMediaTime = 0;
-    const progressFills = document.querySelectorAll('.dash-progress-fill');
-    progressFills.forEach(el => el.style.width = '0%');
-    const times = document.querySelectorAll('.dash-time');
-    if (times.length >= 2) {
-      times[0].innerText = '0:00';
-      times[1].innerText = '--:--';
-    }
-  } else {
-    // Reset time if song changes
-    if (!window.lastSongTitle || window.lastSongTitle !== data.title) {
-        currentMediaTime = 0;
-        window.lastSongTitle = data.title;
-        fakeMediaDuration = 150 + Math.floor(Math.random() * 90); // randomize duration between 2:30 and 4:00
-    }
-    
-    // Immediate UI update so it doesn't wait 1s
-    const updateProgressUI = () => {
-      const times = document.querySelectorAll('.dash-time');
-      if (times.length >= 2) {
-          times[0].innerText = formatTime(currentMediaTime);
-          times[1].innerText = '-' + formatTime(fakeMediaDuration - currentMediaTime);
-      }
-      const pct = (currentMediaTime / fakeMediaDuration) * 100;
-      const progressFills = document.querySelectorAll('.dash-progress-fill');
-      progressFills.forEach(el => el.style.width = `${pct}%`);
-    };
-    
-    updateProgressUI();
-    mediaProgressInterval = setInterval(() => {
-        currentMediaTime += 1;
-        if (currentMediaTime >= fakeMediaDuration) {
-            currentMediaTime = 0; // loop
-        }
-        updateProgressUI();
-    }, 1000);
-  }
-});
-
-const setupMediaControls = (playId, prevId, nextId) => {
-  const playBtn = document.getElementById(playId);
-  const prevBtn = document.getElementById(prevId);
-  const nextBtn = document.getElementById(nextId);
-  if (playBtn) playBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
-  if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
-  if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
-};
-
-setupMediaControls('dashPlayBtn', 'dashPrevBtn', 'dashNextBtn');
-setupMediaControls('playBtn', 'prevBtn', 'nextBtn');
-setupMediaControls('btmuPlayBtn', 'btmuPrevBtn', 'btmuNextBtn');
