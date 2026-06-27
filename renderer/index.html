@@ -119,7 +119,7 @@
             <div class="dash-sep" id="dashMusicSep"></div>
 
             <!-- Calendar Column -->
-            <div class="dash-cal" id="dashCalCol">
+            <div class="dash-cal">
               <div class="dash-cal-row">
                 <div class="dash-month-large">
                   <span class="cal-arrow" id="calPrevBtn">
@@ -137,21 +137,6 @@
                     <span>Nothing for today</span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <!-- Gaming AI Column (replaces Calendar when gaming) -->
-            <div class="dash-gaming-ai" id="dashGamingAICol" style="display:none;">
-              <div class="gaming-header">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--blue);"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
-                <span>Gaming Assistant</span>
-              </div>
-              <div class="gaming-chat" id="gamingChat">
-                <div class="gaming-msg ai">I noticed you're in-game. What's your next move?</div>
-              </div>
-              <div class="gaming-input-box">
-                <input type="text" id="gamingInput" placeholder="Ask Gemini..." />
-                <button id="gamingSubmit"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
               </div>
             </div>
             
@@ -187,38 +172,47 @@
                 </div>
                 <div class="weather-bg"></div>
                 <div class="weather-content">
-                  <div class="weather-left">
-                    <div class="weather-temp-group">
+                  <div class="weather-top-row">
+                    <div class="weather-left">
                       <div class="weather-city" id="weatherCity">Detecting...</div>
                       <div class="weather-temp" id="weatherTemp">--<span>°</span></div>
                     </div>
+                    <div class="weather-right">
+                      <div class="weather-icon" id="weatherIcon">☀️</div>
+                      <div class="weather-alert" id="weatherAlert"></div>
+                    </div>
                   </div>
-                  <div class="weather-right">
-                    <div class="weather-icon" id="weatherIcon" style="font-size:32px;">☀️</div>
-                    <div class="weather-alert" id="weatherAlert" style="margin-top:20px; font-weight:600; font-size:14px;"></div>
+                  <div class="weather-bottom-row" id="weatherForecastRow">
+                    <!-- Forecast items injected via JS -->
                   </div>
-                </div>
-                <div class="weather-hourly" id="weatherHourly">
-                  <!-- JS will populate hourly items here -->
                 </div>
               </div>
 
-              <div class="dash-widgets-row">
-                <!-- STOCKS WIDGET -->
-                <div class="dash-stocks" id="dashStocks">
-                  <div class="widget-header">Markets</div>
-                  <div class="stocks-list" id="stocksList">
-                    <div class="widget-loading">Loading...</div>
-                  </div>
+              <!-- Stocks Widget -->
+              <div class="dash-stocks" id="dashStocks">
+                <div class="stocks-top">
+                  <div class="stocks-ticker" id="stocksTicker">AAPL</div>
+                  <div class="stocks-price" id="stocksPrice">--</div>
                 </div>
+                <div class="stocks-bottom">
+                  <div class="stocks-change" id="stocksChange">--</div>
+                </div>
+              </div>
 
-                <!-- SPORTS WIDGET -->
-                <div class="dash-sports" id="dashSports">
-                  <div class="widget-header">Live MLB</div>
-                  <div class="sports-list" id="sportsList">
-                    <div class="widget-loading">Loading...</div>
+              <!-- Sports Widget -->
+              <div class="dash-sports" id="dashSports">
+                <div class="sports-header">NFL</div>
+                <div class="sports-matchup" id="sportsMatchup">
+                  <div class="team team-away">
+                    <span class="team-name" id="awayTeam">--</span>
+                    <span class="team-score" id="awayScore">-</span>
+                  </div>
+                  <div class="team team-home">
+                    <span class="team-name" id="homeTeam">--</span>
+                    <span class="team-score" id="homeScore">-</span>
                   </div>
                 </div>
+                <div class="sports-status" id="sportsStatus"></div>
               </div>
             </div>
           </div>

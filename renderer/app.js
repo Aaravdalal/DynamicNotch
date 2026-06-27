@@ -1010,17 +1010,6 @@ if (searchGoogleIcon) {
 
 // Duplicate mic listener removed to avoid overriding custom logic
 
-// Weather mapping for WMO codes
-function getWeatherFromCode(code) {
-  if (code === 0) return { icon: '☀️', bg: 'weather-sunny' };
-  if ([1, 2, 3].includes(code)) return { icon: '⛅', bg: 'weather-cloudy' };
-  if ([45, 48].includes(code)) return { icon: '🌫️', bg: 'weather-cloudy' };
-  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return { icon: '🌧️', bg: 'weather-rainy' };
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return { icon: '❄️', bg: 'weather-snowy' };
-  if ([95, 96, 99].includes(code)) return { icon: '⛈️', bg: 'weather-rainy' };
-  return { icon: '☁️', bg: 'weather-cloudy' };
-}
-
 async function fetchWeather() {
   try {
     const locRes = await fetch('http://ip-api.com/json/');
@@ -1028,176 +1017,104 @@ async function fetchWeather() {
     const city = locData.city;
     document.getElementById('weatherCity').textContent = city;
     
-    const weatherData = await window.notchAPI.fetchHourlyWeather(city);
-    if (!weatherData || !weatherData.hourly) throw new Error('No weather data');
+    const weatherData = await window.notchAPI.fetchWeather(city);
+    if (!weatherData) throw new Error('No weather data');
     
-    const now = new Date();
-    // Find closest hour
-    let currentIndex = 0;
-    let minDiff = Infinity;
-    weatherData.hourly.time.forEach((t, i) => {
-      const diff = Math.abs(new Date(t) - now);
-      if (diff < minDiff) { minDiff = diff; currentIndex = i; }
-    });
-
-    const temp = Math.round(weatherData.hourly.temperature_2m[currentIndex]);
-    const code = weatherData.hourly.weathercode[currentIndex];
-    const { icon, bg } = getWeatherFromCode(code);
+    const temp = weatherData.current.temperature;
+    const phrase = weatherData.current.skytext.toLowerCase();
     
-    document.getElementById('weatherTemp').innerHTML = temp + '<span>°</span>';
+    document.getElementById('weatherTemp').innerHTML = temp + '<span>°F</span>';
     
     const dashWeather = document.getElementById('dashWeather');
-    dashWeather.className = 'dash-weather ' + bg;
+    dashWeather.className = 'dash-weather';
+    
+    let icon = '☀️';
+    if (phrase.includes('sunny') || phrase.includes('clear')) {
+      dashWeather.classList.add('weather-sunny');
+      icon = '☀️';
+    } else if (phrase.includes('rain') || phrase.includes('shower') || phrase.includes('storm')) {
+      dashWeather.classList.add('weather-rainy');
+      icon = '🌧️';
+    } else if (phrase.includes('snow') || phrase.includes('ice')) {
+      dashWeather.classList.add('weather-snowy');
+      icon = '❄️';
+    } else {
+      dashWeather.classList.add('weather-cloudy');
+      icon = phrase.includes('partly') ? '⛅' : '☁️';
+    }
+    
     document.getElementById('weatherIcon').textContent = icon;
     
-    // Add fake alert for aesthetics just like the screenshot
-    document.getElementById('weatherAlert').textContent = 'Winter storm warning';
-    
-    // Render hourly forecast
-    const hourlyContainer = document.getElementById('weatherHourly');
-    hourlyContainer.innerHTML = '';
-    
-    for (let i = currentIndex; i < currentIndex + 6; i++) {
-      if (i >= weatherData.hourly.time.length) break;
-      const t = new Date(weatherData.hourly.time[i]);
-      let hr = t.getHours();
-      const ampm = hr >= 12 ? 'PM' : 'AM';
-      hr = hr % 12; if (hr === 0) hr = 12;
-      const timeStr = `${hr}${ampm}`;
-      const tTemp = Math.round(weatherData.hourly.temperature_2m[i]);
-      const tCode = weatherData.hourly.weathercode[i];
-      const tIcon = getWeatherFromCode(tCode).icon;
-      
-      const item = document.createElement('div');
-      item.className = 'hourly-item';
-      item.innerHTML = `
-        <span>${timeStr}</span>
-        <span class="hourly-icon">${tIcon}</span>
-        <span>${tTemp}°</span>
-      `;
-      hourlyContainer.appendChild(item);
+    // Populate forecast row
+    const forecastRow = document.getElementById('weatherForecastRow');
+    if (forecastRow && weatherData.forecast) {
+      forecastRow.innerHTML = '';
+      // Slice the next 5 days
+      const days = weatherData.forecast.slice(0, 5);
+      days.forEach(day => {
+        const item = document.createElement('div');
+        item.className = 'weather-forecast-item';
+        
+        let dIcon = '☀️';
+        const dPhrase = (day.skytextday || '').toLowerCase();
+        if (dPhrase.includes('sunny') || dPhrase.includes('clear')) dIcon = '☀️';
+        else if (dPhrase.includes('rain') || dPhrase.includes('shower')) dIcon = '🌧️';
+        else if (dPhrase.includes('snow') || dPhrase.includes('ice')) dIcon = '❄️';
+        else dIcon = dPhrase.includes('partly') ? '⛅' : '☁️';
+        
+        item.innerHTML = `
+          <div class="wf-time">${day.shortday}</div>
+          <div class="wf-icon">${dIcon}</div>
+          <div class="wf-temp">${day.high}°</div>
+        `;
+        forecastRow.appendChild(item);
+      });
     }
+    
   } catch(e) {
     console.error('Weather error:', e);
     document.getElementById('weatherCity').textContent = 'Location unavailable';
   }
 }
 
-async function updateStocks() {
-  const container = document.getElementById('stocksList');
+async function fetchStocks() {
   try {
-    const data = await window.notchAPI.fetchStocks(['AAPL', 'MSFT', 'TSLA']);
-    if (!data || data.length === 0) throw new Error();
-    container.innerHTML = '';
-    data.forEach(s => {
-      const diff = s.price - s.previousClose;
-      const pct = (diff / s.previousClose) * 100;
-      const isUp = diff >= 0;
-      const cls = isUp ? 'stock-up' : 'stock-down';
-      const sign = isUp ? '+' : '';
-      
-      const item = document.createElement('div');
-      item.className = 'stock-item';
-      item.innerHTML = `
-        <span class="stock-sym">${s.symbol}</span>
-        <span class="stock-price">$${s.price.toFixed(2)}</span>
-        <span class="stock-change ${cls}">${sign}${pct.toFixed(2)}%</span>
-      `;
-      container.appendChild(item);
-    });
+    const data = await window.notchAPI.fetchStock('AAPL');
+    if (data && data.regularMarketPrice) {
+      document.getElementById('stocksPrice').textContent = '$' + data.regularMarketPrice.toFixed(2);
+      const change = data.regularMarketChangePercent;
+      const changeEl = document.getElementById('stocksChange');
+      changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+      changeEl.className = 'stocks-change ' + (change >= 0 ? 'positive' : 'negative');
+    }
   } catch (e) {
-    container.innerHTML = '<div style="font-size:12px;opacity:0.6;padding:10px;">Failed to load</div>';
+    console.error('Stock error', e);
   }
 }
 
-async function updateSports() {
-  const container = document.getElementById('sportsList');
+async function fetchSports() {
   try {
     const data = await window.notchAPI.fetchSports();
-    if (!data || !data.events) throw new Error();
-    container.innerHTML = '';
-    const events = data.events.slice(0, 3);
-    events.forEach(e => {
-      const home = e.competitions[0].competitors.find(c => c.homeAway === 'home');
-      const away = e.competitions[0].competitors.find(c => c.homeAway === 'away');
-      const status = e.status.type.shortDetail;
-      const item = document.createElement('div');
-      item.className = 'sport-item';
-      item.innerHTML = `
-        <div class="sport-team"><span>${away.team.abbreviation}</span><span>${away.score}</span></div>
-        <div class="sport-team"><span>${home.team.abbreviation}</span><span>${home.score}</span></div>
-        <div class="sport-status">${status}</div>
-      `;
-      container.appendChild(item);
-    });
+    if (data && data.events && data.events.length > 0) {
+      const event = data.events[0];
+      const comp = event.competitions[0];
+      const home = comp.competitors.find(c => c.homeAway === 'home');
+      const away = comp.competitors.find(c => c.homeAway === 'away');
+      
+      document.getElementById('homeTeam').textContent = home.team.abbreviation;
+      document.getElementById('homeScore').textContent = home.score;
+      document.getElementById('awayTeam').textContent = away.team.abbreviation;
+      document.getElementById('awayScore').textContent = away.score;
+      document.getElementById('sportsStatus').textContent = event.status.type.detail;
+    }
   } catch (e) {
-    container.innerHTML = '<div style="font-size:12px;opacity:0.6;padding:10px;">Failed to load</div>';
+    console.error('Sports error', e);
   }
 }
-
-// Gaming AI Logic
-let activeGame = null;
-const gameExecutables = ['valorant.exe', 'league of legends.exe', 'robloxplayerbeta.exe', 'csgo.exe', 'minecraft.exe'];
-
-if (window.notchAPI.onLockUpdate) {
-  // We can hook into a hypothetical active window update if sys-monitor supported it.
-  // We'll simulate gaming mode toggle by pressing G in the search box for testing.
-  const input = document.getElementById('dashSearchInput');
-  if (input) {
-    input.addEventListener('keyup', (e) => {
-      if (input.value === '/gaming') {
-        input.value = '';
-        activeGame = 'Valorant';
-        document.getElementById('dashCalCol').style.display = 'none';
-        document.getElementById('dashGamingAICol').style.display = 'flex';
-      } else if (input.value === '/stopgaming') {
-        input.value = '';
-        activeGame = null;
-        document.getElementById('dashCalCol').style.display = 'block';
-        document.getElementById('dashGamingAICol').style.display = 'none';
-      }
-    });
-  }
-}
-
-const gamingSubmit = document.getElementById('gamingSubmit');
-const gamingInput = document.getElementById('gamingInput');
-const gamingChat = document.getElementById('gamingChat');
-
-async function askAI() {
-  const prompt = gamingInput.value.trim();
-  if (!prompt) return;
-  gamingInput.value = '';
-  
-  gamingChat.innerHTML += `<div class="gaming-msg user">${prompt}</div>`;
-  gamingChat.scrollTop = gamingChat.scrollHeight;
-  
-  const config = await window.notchAPI.getConfig();
-  const key = config.geminiKey;
-  if (!key) {
-    gamingChat.innerHTML += `<div class="gaming-msg ai">API key missing! Set geminiKey in config.json.</div>`;
-    gamingChat.scrollTop = gamingChat.scrollHeight;
-    return;
-  }
-  
-  gamingChat.innerHTML += `<div class="gaming-msg ai" id="loadingAi">Thinking...</div>`;
-  gamingChat.scrollTop = gamingChat.scrollHeight;
-  
-  const fullPrompt = `I am playing ${activeGame}. ${prompt}. Keep it short and under 2 sentences.`;
-  const reply = await window.notchAPI.askGamingAI(fullPrompt, key);
-  
-  document.getElementById('loadingAi').remove();
-  gamingChat.innerHTML += `<div class="gaming-msg ai">${reply}</div>`;
-  gamingChat.scrollTop = gamingChat.scrollHeight;
-}
-
-if (gamingSubmit) gamingSubmit.addEventListener('click', askAI);
-if (gamingInput) gamingInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') askAI(); });
-
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
-  updateStocks();
-  updateSports();
+  fetchStocks();
+  fetchSports();
   const weatherBtn = document.getElementById('weatherBtn');
   if (weatherBtn) {
     weatherBtn.addEventListener('click', () => {
@@ -1207,6 +1124,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 setInterval(fetchWeather, 3600000);
-setInterval(updateStocks, 60000);
-setInterval(updateSports, 60000);
+setInterval(fetchStocks, 60000); // 1 min
+setInterval(fetchSports, 60000); // 1 min
 
