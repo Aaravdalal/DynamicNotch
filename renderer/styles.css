@@ -344,8 +344,13 @@ body{
 
 .dash-meta{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;min-width:0;flex:1;text-align:left;}
 .dash-title{font-size:18px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-0.03em;line-height:1.2;color:#fff;margin-bottom:0px;max-width:240px;}
-.dash-artist{font-size:14px;font-weight:500;color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;max-width:240px;}
+.dash-artist{font-size:14px;font-weight:500;color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;max-width:240px;}
 .dash-album{display:none;} 
+
+.dash-progress-container{display:flex;align-items:center;width:100%;gap:8px;margin-bottom:6px;max-width:240px;}
+.dash-time{font-size:10px;font-weight:600;color:rgba(255,255,255,0.5);font-variant-numeric:tabular-nums;}
+.dash-progress{flex:1;height:4px;background:rgba(255,255,255,0.15);border-radius:2px;overflow:hidden;position:relative;}
+.dash-progress-fill{width:25%;height:100%;background:#fff;border-radius:2px;opacity:0.85;}
 
 .dash-ctrls{display:flex;gap:22px;align-items:center;color:#fff;}
 .dash-ctrl{cursor:pointer;transition:transform .15s ease, opacity 0.2s;opacity:.9}
