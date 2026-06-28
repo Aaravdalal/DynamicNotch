@@ -64,8 +64,8 @@ body{
 .notch.expanded[data-state="low-battery"]{width:320px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="recording"]{width:300px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="dnd"]{width:160px;height:52px;border-radius:0 0 22px 22px}
-/* Media player - drops vertically, but user wants wide UI */
-.notch.expanded[data-state="music"]{width:740px;height:180px;border-radius:0 0 24px 24px}
+/* Media player - compact standalone island mode */
+.notch.expanded[data-state="music"]{width:370px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bluetooth"]{width:360px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bt-connected"]{width:640px;height:180px;border-radius:0 0 28px 28px}
 .notch.expanded[data-state="bt-music"]{width:520px;height:220px;border-radius:0 0 32px 32px}
@@ -313,14 +313,16 @@ body{
   display:flex;align-items:center;font-size:12px;font-weight:600;color:#fff;
 }
 
-.dash-main{
-  display:flex;flex:1;min-height:0;padding-left:40px;
-}
+.dash-main{display:flex;flex:1;min-height:0;padding-left:16px;}
 
 .dash-sep{width:1px;background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.1) 80%, transparent);margin:0 24px;align-self:stretch}
 
 /* music col - MUCH WIDER */
-.dash-music{flex:1;display:flex;flex-direction:column;min-width:0;padding-right:12px;border-right:1px solid rgba(255,255,255,0.06)}
+.dash-music{
+  flex:1.2;min-width:0;
+  display:flex;flex-direction:row;gap:16px;align-items:center;padding:4px 8px 4px 0;
+  border-right:1px solid rgba(255,255,255,.05);
+}
 .dash-art{position:relative;width:64px;height:64px;border-radius:14px;overflow:hidden;background:#1a1a2e;flex-shrink:0}
 .dash-art img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;display:none;z-index:2}
 .dash-art-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#6C5CE7,#a29bfe);opacity:0.6;font-size:24px;color:rgba(255,255,255,0.8)}
@@ -339,7 +341,7 @@ body{
 .dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
 /* calendar col - slimmer to make room for music */
-.dash-cal{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0}
+.dash-cal{flex:0.8;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0}
 .notch[data-state="music"] .dash-cal, .notch[data-state="music"] .dash-sep {display: none !important;}
 .notch[data-state="bt-music"] .dash-cal, .notch[data-state="bt-music"] .dash-sep {display: none !important;}
 .dash-cal-row{display:flex;align-items:center;justify-content:center;gap:20px;width:max-content}
@@ -397,7 +399,7 @@ body{
 .mu-artist{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .equalizer{display:flex;align-items:flex-end;gap:3px;height:26px;flex-shrink:0}
-.equalizer span{width:3.5px;border-radius:2px;background:var(--eq);height:4px;transition:background .6s ease}
+.equalizer span{width:3.5px;border-radius:2px;background:#fff;height:4px;transition:background .6s ease}
 
 .mu-seek{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .mu-time{font-size:9px;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums;min-width:28px;text-align:center}
@@ -475,7 +477,7 @@ body{
 
 /* Widgets Column */
 .dash-widgets {
-  flex: 1.5;
+  flex: 0.9;
   display: flex;
   flex-direction: column;
   gap: 12px;

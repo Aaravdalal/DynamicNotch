@@ -61,71 +61,83 @@
       <!-- ═══ PANEL: IDLE (Dashboard) ═══ -->
         <div class="panel panel-idle" id="panelIdle">
           <div class="dash">
-            <div class="dash-header" style="position: relative;">
-              <div class="dash-icons">
-                <svg id="idleSilentIcon" style="display:none; color: var(--red); margin-right: 6px;" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                  <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-                </svg>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19,15H15A3,3 0 0,1 12,18A3,3 0 0,1 9,15H5V5H19M19,3H5C3.89,3 3,3.89 3,5V15A2,2 0 0,0 5,17H9A3,3 0 0,0 12,20A3,3 0 0,0 15,17H19A2,2 0 0,0 21,15V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/>
-                </svg>
+            <div class="dash-header" style="display: flex; margin-bottom: 12px; align-items: center;">
+              <!-- Left side matching Music Column width (380px) -->
+              <div style="flex: 0 0 380px; display: flex; align-items: center; padding-right: 16px;">
+                <div class="dash-icons" style="display: flex; gap: 16px; margin-right: auto; color: rgba(255,255,255,0.5);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/> <!-- Home -->
+                  </svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="18" x2="12" y2="21"></line> <!-- Screen -->
+                  </svg>
+                </div>
+                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-right: auto; letter-spacing: -0.01em;" id="bigTime">1:47 PM</div>
               </div>
-              <div id="dashTimeDate" style="position: absolute; left: 50%; transform: translateX(-40%); display: flex; gap: 120px; justify-content: center; width: 300px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap;">
-                <span id="bigTime">9:41 AM</span> <span id="bigDate">Mon, Jan 1</span>
-              </div>
-              <div style="display: flex; gap: 12px; align-items: center;">
-                <div class="dash-battery" id="dashHeaderBattery">
-                  <span id="dashBattPctText">100%</span>
+              
+              <!-- Right side matching Widgets Column -->
+              <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; padding-left: 16px;">
+                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: auto; margin-right: auto; letter-spacing: -0.01em;" id="bigDate">Sat, Jun 27</div>
+                <div class="dash-battery" id="dashHeaderBattery" style="display: flex; align-items: center;">
+                  <span id="dashBattPctText" style="color: #22c55e; font-size: 13px; font-weight: 600;">80%</span>
                   <svg class="pill-batt-svg" viewBox="0 0 24 12" style="width:24px;height:12px;margin-left:6px;">
                     <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
-                    <rect id="dashBattFill" x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#fff"/>
+                    <rect id="dashBattFill" x="2.5" y="2.5" width="16" height="7" rx="1.5" fill="#22c55e"/>
                     <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
                   </svg>
                 </div>
               </div>
             </div>
 
-          <div class="dash-main">
+          <div class="dash-main" style="display: flex; flex: 1; padding: 0;">
             <!-- Music Column -->
-            <div class="dash-music" id="dashMusicCol">
-              <div class="dash-now-playing" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                <div class="dash-art">
-                  <img id="dashCoverImg" src="" crossorigin="anonymous"/>
-                  <div class="dash-art-placeholder">♫</div>
-                  <div class="dash-app-icon">
-                    <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            <div class="dash-music" id="dashMusicCol" style="flex: 0 0 380px; display: flex; flex-direction: row; gap: 16px; align-items: center; padding: 0 16px 0 0; border-right: 1px solid rgba(255,255,255,0.05);">
+              <!-- Left Side: Large Album Art -->
+              <div class="dash-art" style="width: 84px; height: 84px; border-radius: 18px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4); position: relative; overflow: hidden;">
+                <img id="dashCoverImg" src="" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; z-index: 2;"/>
+                <div class="dash-art-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#6C5CE7,#a29bfe); opacity: 0.6; font-size: 32px; color: rgba(255,255,255,0.8); position: relative; z-index: 1;">♫</div>
+              </div>
+              
+              <!-- Right Side: Details and Controls -->
+              <div class="dash-music-details" style="flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0;">
+                
+                <!-- Top Row: Title and EQ -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
+                  <div class="dash-title" id="dashSongTitle" style="font-weight: 700; font-size: 16px; color: #fff; margin-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Not Playing</div>
+                  <div class="dash-equalizer equalizer" id="dashEqualizer" style="height: 14px; margin-top: 2px;">
+                    <span></span><span></span><span></span><span></span>
                   </div>
                 </div>
-                <div class="dash-meta" style="flex: 1;">
-                  <div class="dash-title" id="dashSongTitle" style="font-weight: 600; font-size: 14px; margin-bottom: 2px;">Not Playing</div>
-                  <div class="dash-artist" id="dashSongArtist" style="color: rgba(255,255,255,0.6); font-size: 12px;"></div>
-                </div>
-                <div class="dash-equalizer equalizer" id="dashEqualizer" style="align-self: center; margin-right: 0;">
-                  <span></span><span></span><span></span><span></span><span></span>
-                </div>
-              </div>
+                
+                <!-- Artist Row -->
+                <div class="dash-artist" id="dashSongArtist" style="color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Open Spotify</div>
 
-              <div class="mu-seek dash-seek" style="margin-top: 8px; margin-bottom: 8px; padding: 0;">
-                <span class="mu-time" id="dashTimeElapsed" style="font-size: 10px; opacity: 0.6;">-0:00</span>
-                <div class="mu-bar" id="dashSeekArea">
-                  <div class="mu-fill" id="dashSeekFill"></div>
-                  <div class="mu-thumb" id="dashSeekThumb"></div>
+                <!-- Seek Bar Row -->
+                <div class="mu-seek dash-seek" style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 0;">
+                  <span class="mu-time" id="dashTimeElapsed" style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; min-width: 28px; text-align: left;">0:00</span>
+                  <div class="mu-bar" id="dashSeekArea" style="flex: 1; height: 5px; background: rgba(255,255,255,0.15); border-radius: 3px; position: relative; cursor: pointer;">
+                    <div class="mu-fill" id="dashSeekFill" style="height: 100%; width: 0%; background: #fff; border-radius: 3px; transition: width 0.1s linear;"></div>
+                    <div class="mu-thumb" id="dashSeekThumb" style="position: absolute; top: 50%; left: 0%; transform: translate(-50%, -50%); width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.5); opacity: 1;"></div>
+                  </div>
+                  <span class="mu-time" id="dashTimeTotal" style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; min-width: 32px; text-align: right;">-0:00</span>
                 </div>
-                <span class="mu-time" id="dashTimeTotal" style="font-size: 10px; opacity: 0.6;">0:00</span>
-              </div>
 
-              <div class="dash-ctrls" style="display: flex; justify-content: center; gap: 24px; align-items: center; margin-top: 8px;">
-                <svg id="dashPrevBtn" class="dash-ctrl mu-btn skip" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="cursor: pointer;"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-                <svg id="dashPlayBtn" class="dash-ctrl mu-btn play" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="cursor: pointer;"><path d="M8 5v14l11-7z"/></svg>
-                <svg id="dashNextBtn" class="dash-ctrl mu-btn skip" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="cursor: pointer;"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                <!-- Controls Row -->
+                <div class="dash-ctrls" style="display: flex; justify-content: space-between; align-items: center; padding: 0; margin: 0;">
+                  <button id="dashStarBtn" class="dash-ctrl mu-btn" style="color: rgba(255,255,255,0.5);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+                  
+                  <div style="display: flex; align-items: center; gap: 24px;">
+                    <button id="dashPrevBtn" class="dash-ctrl mu-btn skip" style="color: rgba(255,255,255,0.7);"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+                    <button id="dashPlayBtn" class="dash-ctrl mu-btn play" style="color: #fff;"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+                    <button id="dashNextBtn" class="dash-ctrl mu-btn skip" style="color: rgba(255,255,255,0.7);"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+                  </div>
+                  
+                  <button id="dashChevronBtn" class="dash-ctrl mu-btn" style="color: rgba(255,255,255,0.5);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                </div>
               </div>
             </div>
 
-            <div class="dash-sep" id="dashMusicSep"></div>
+            <div class="dash-sep" id="dashMusicSep" style="display: none;"></div>
 
             <!-- Calendar Column -->
             <div class="dash-cal">
@@ -151,19 +163,27 @@
             
             <div class="dash-sep" id="dashWidgetSep"></div>
             
-            <div class="dash-widgets" id="dashWidgetsCol">
-              <div class="search-box-container">
-                <div class="search-box" id="searchBoxOuter">
-                  <svg id="searchGoogleIcon" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="cursor: pointer;">
+            <div class="dash-widgets" id="dashWidgetsCol" style="flex: 1; display: flex; flex-direction: column; gap: 10px; padding-left: 16px; padding-right: 16px; position: relative; overflow: visible;">
+              <!-- Plus button placed on right edge bridging search and weather -->
+              <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: 40px; right: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); color: #000000; z-index: 10; font-weight: bold;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </div>
+
+              <div class="search-box-container" style="height: 38px;">
+                <div class="search-box" id="searchBoxOuter" style="background: #fff; border-radius: 19px; display: flex; align-items: center; padding: 0 16px; width: 100%; height: 100%; box-sizing: border-box;">
+                  <svg id="searchGoogleIcon" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; flex-shrink: 0;">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
-                  <input type="text" id="dashSearchInput" placeholder="Search Google..." />
+                  <input type="text" id="dashSearchInput" placeholder="Search Google..." style="border: none; outline: none; background: transparent; padding-left: 12px; font-size: 14px; color: #5f6368; flex: 1; min-width: 0; font-weight: 500;" />
                   
-                  <div class="search-mic" id="searchMicBtn" title="Search by Voice">
-                    <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+                  <div class="search-mic" id="searchMicBtn" title="Search by Voice" style="flex-shrink: 0; cursor: pointer; display: flex; align-items: center;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
                       <path fill="#4285f4" d="M12,14c1.66,0,3-1.34,3-3V5c0-1.66-1.34-3-3-3S9,3.34,9,5v6C9,12.66,10.34,14,12,14z"/>
                       <path fill="#34a853" d="M11,18.92h2V22h-2V18.92z"/>
                       <path fill="#fbbc04" d="M7,11H5c0,1.93,0.78,3.68,2.05,4.95l1.41-1.41C7.56,13.63,7,12.38,7,11z"/>
@@ -172,24 +192,17 @@
                   </div>
                 </div>
               </div>
-              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative;">
-                <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: -6px; right: -6px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: transform 0.2s, background 0.2s; color: #000000; z-index: 10;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                </div>
-                <div class="weather-bg"></div>
-                <div class="weather-content">
-                  <div class="weather-left">
-                    <div class="weather-icon" id="weatherIcon">☀️</div>
-                    <div class="weather-temp-group">
-                      <div class="weather-temp" id="weatherTemp">--<span>°F</span></div>
-                      <div class="weather-city" id="weatherCity">Detecting...</div>
+              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; border-radius: 16px; background: linear-gradient(135deg, #4fa8ff, #3884d6); flex: 1; display: flex; align-items: center; padding: 0 16px;">
+                <div class="weather-content" style="display: flex; width: 100%; align-items: center; justify-content: space-between;">
+                  <div class="weather-left" style="display: flex; align-items: center; gap: 12px;">
+                    <div class="weather-icon" id="weatherIcon" style="font-size: 38px;">☀️</div>
+                    <div class="weather-temp-group" style="display: flex; flex-direction: column;">
+                      <div class="weather-temp" id="weatherTemp" style="font-size: 32px; font-weight: 700; color: #fff; line-height: 1;">71<span style="font-size: 16px; font-weight: 600;">°F</span></div>
+                      <div class="weather-city" id="weatherCity" style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px;">Detecting...</div>
                     </div>
                   </div>
                   <div class="weather-right">
-                    <div class="weather-forecast-btn" id="weatherBtn">See full forecast</div>
+                    <div class="weather-forecast-btn" id="weatherBtn" style="background: rgba(255, 255, 255, 0.2); padding: 8px 14px; border-radius: 16px; font-size: 12px; font-weight: 600; color: #fff; cursor: pointer;">See full forecast</div>
                   </div>
                 </div>
               </div>
@@ -222,37 +235,52 @@
       </div>
 
       <!-- ═══ PANEL: MUSIC ═══ -->
-      <div class="panel panel-music" id="panelMusic">
-        <div class="mu-top">
-          <div class="mu-art" id="albumArt">
-            <img id="coverImg" src="" alt="" crossorigin="anonymous" />
-            <div class="mu-art-ph" id="albumPlaceholder">
-              <div class="mu-art-grad"></div>
-              <div class="mu-art-note">♫</div>
+      <div class="panel panel-music" id="panelMusic" style="display: flex; flex-direction: row; gap: 16px; align-items: center; padding: 12px 20px;">
+        <!-- Left Side: Large Album Art -->
+        <div class="mu-art" id="albumArt" style="width: 84px; height: 84px; border-radius: 18px; flex-shrink: 0; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+          <img id="coverImg" src="" alt="" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; z-index: 2;" />
+          <div class="mu-art-ph" id="albumPlaceholder" style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center;">
+            <div class="mu-art-grad" style="position: absolute; inset: 0; background: linear-gradient(135deg,#6C5CE7,#a29bfe); opacity: 0.6;"></div>
+            <div class="mu-art-note" style="position: relative; z-index: 2; font-size: 32px; color: rgba(255,255,255,0.8);">♫</div>
+          </div>
+        </div>
+        
+        <!-- Right Side: Details and Controls -->
+        <div class="mu-info-container" style="flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0;">
+          
+          <!-- Top Row: Title and EQ -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
+            <div class="mu-title" id="songTitle" style="font-weight: 700; font-size: 16px; color: #fff; margin-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Not Playing</div>
+            <div class="equalizer" id="equalizer" style="height: 14px; margin-top: 2px;">
+              <span></span><span></span><span></span><span></span>
             </div>
           </div>
-          <div class="mu-info">
-            <div class="mu-title" id="songTitle">Not Playing</div>
-            <div class="mu-artist" id="songArtist">Open Spotify</div>
+          
+          <!-- Artist Row -->
+          <div class="mu-artist" id="songArtist" style="color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Open Spotify</div>
+
+          <!-- Seek Bar Row -->
+          <div class="mu-seek" style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 0;">
+            <span class="mu-time" id="timeElapsed" style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; min-width: 28px; text-align: left;">0:00</span>
+            <div class="mu-bar" style="flex: 1; height: 5px; background: rgba(255,255,255,0.15); border-radius: 3px; position: relative; cursor: pointer;">
+              <div class="mu-fill" id="seekFill" style="height: 100%; width: 0%; background: #fff; border-radius: 3px; transition: width 0.1s linear;"></div>
+              <div class="mu-thumb" id="seekThumb" style="position: absolute; top: 50%; left: 0%; transform: translate(-50%, -50%); width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.5); opacity: 1;"></div>
+            </div>
+            <span class="mu-time" id="timeTotal" style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; min-width: 32px; text-align: right;">-0:00</span>
           </div>
-          <div class="equalizer" id="equalizer">
-            <span></span><span></span><span></span><span></span><span></span>
+
+          <!-- Controls Row -->
+          <div class="mu-controls" style="display: flex; justify-content: space-between; align-items: center; padding: 0; margin: 0; gap: 0;">
+            <button class="mu-btn" id="shuffleBtn" style="color: rgba(255,255,255,0.5);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+            
+            <div style="display: flex; align-items: center; gap: 24px;">
+              <button class="mu-btn skip" id="prevBtn" style="color: rgba(255,255,255,0.7);"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+              <button class="mu-btn play" id="playBtn" style="color: #fff;"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+              <button class="mu-btn skip" id="nextBtn" style="color: rgba(255,255,255,0.7);"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+            </div>
+            
+            <button class="mu-btn" id="queueBtn" style="color: rgba(255,255,255,0.5);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
           </div>
-        </div>
-        <div class="mu-seek">
-          <span class="mu-time" id="timeElapsed">-0:00</span>
-          <div class="mu-bar">
-            <div class="mu-fill" id="seekFill"></div>
-            <div class="mu-thumb" id="seekThumb"></div>
-          </div>
-          <span class="mu-time" id="timeTotal">0:00</span>
-        </div>
-        <div class="mu-controls">
-          <button class="mu-btn" id="shuffleBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
-          <button class="mu-btn skip" id="prevBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-          <button class="mu-btn play" id="playBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-          <button class="mu-btn skip" id="nextBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
-          <button class="mu-btn" id="queueBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></button>
         </div>
       </div>
 
@@ -371,7 +399,7 @@
               <div class="mu-title" id="btmuSongTitle">Not Playing</div>
               <div class="mu-artist" id="btmuSongArtist">Open Spotify</div>
             </div>
-            <div class="equalizer" id="btmuEqualizer"><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="equalizer" id="btmuEqualizer"><span></span><span></span><span></span><span></span></div>
           </div>
           <div class="mu-controls">
             <button class="mu-btn skip" id="btmuPrevBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>

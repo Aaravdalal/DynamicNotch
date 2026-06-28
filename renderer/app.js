@@ -27,7 +27,7 @@ const collapsedView = document.getElementById('collapsedView');
 const panelMap = {
   idle:            'panelIdle',
   hover:           'panelHoverToggles',
-  music:           'panelIdle',
+  music:           'panelMusic',
   recording:       'panelRecording',
   bluetooth:       'panelBluetooth',
   'bt-connected':  'panelIdle',
@@ -195,24 +195,67 @@ function setupInteractions() {
   const deb = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   // Music controls (expanded panel)
-  document.getElementById('prevBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('prev'); }, 300));
-  document.getElementById('playBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('playpause'); }, 300));
-  document.getElementById('nextBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('next'); }, 300));
+  document.getElementById('prevBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
+  document.getElementById('playBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
+  document.getElementById('nextBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
   
+  const chevronBtn = document.getElementById('queueBtn');
+  if (chevronBtn) {
+    chevronBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      forcedPanel = 'panelIdle';
+      notch.classList.add('forced-full');
+      showActivePanel();
+    });
+  }
+
+  // Star buttons logic
+  const toggleStar = (btn) => {
+    if(!btn) return;
+    const svg = btn.querySelector('svg');
+    if (!svg) return;
+    const isFilled = svg.getAttribute('fill') === 'currentColor';
+    if (isFilled) {
+      svg.setAttribute('fill', 'none');
+      btn.style.color = 'rgba(255,255,255,0.5)';
+    } else {
+      svg.setAttribute('fill', 'currentColor');
+      btn.style.color = '#22c55e'; // Green highlight
+    }
+  };
+  const pStar = document.getElementById('shuffleBtn'); // panelMusic star
+  if(pStar) pStar.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(pStar); });
+  const dStar = document.getElementById('dashStarBtn'); // dashMusic star
+  if(dStar) dStar.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(dStar); });
+
   setupScrubberDrag();
 
   // Combined BT-Music controls
-  document.getElementById('btmuPrevBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('prev'); }, 300));
-  document.getElementById('btmuPlayBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('playpause'); }, 300));
-  document.getElementById('btmuNextBtn').addEventListener('click', deb(() => { window.notchAPI.controlMedia('next'); }, 300));
+  document.getElementById('btmuPrevBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
+  document.getElementById('btmuPlayBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
+  document.getElementById('btmuNextBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
 
   // Dashboard music controls
   const dPrev = document.getElementById('dashPrevBtn');
   const dPlay = document.getElementById('dashPlayBtn');
   const dNext = document.getElementById('dashNextBtn');
-  if(dPrev) dPrev.addEventListener('click', deb(e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); }, 300));
-  if(dPlay) dPlay.addEventListener('click', deb(e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); }, 300));
-  if(dNext) dNext.addEventListener('click', deb(e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); }, 300));
+  if(dPrev) dPrev.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
+  if(dPlay) dPlay.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
+  if(dNext) dNext.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
+  
+  const dashChevronBtn = document.getElementById('dashChevronBtn');
+  if (dashChevronBtn) {
+    dashChevronBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (currentState === 'music') {
+        forcedPanel = null;
+        notch.classList.remove('forced-full');
+        showActivePanel();
+      } else {
+        collapse();
+      }
+    });
+  }
 
 
   // Calendar nav
@@ -491,18 +534,18 @@ function updateMusicUI() {
 
     const playSvg = document.querySelector('#playBtn svg');
     const btmuPlaySvg = document.querySelector('#btmuPlayBtn svg');
-    const dashPlayBtn = document.getElementById('dashPlayBtn');
+    const dashPlayBtnSvg = document.querySelector('#dashPlayBtn svg');
 
     if (mediaData.paused) {
       stopVisualizer();
       if (playSvg) playSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
       if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
-      if (dashPlayBtn) dashPlayBtn.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
     } else {
       startVisualizer();
       if (playSvg) playSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
       if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-      if (dashPlayBtn) dashPlayBtn.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
     }
     animateProgress();
 
