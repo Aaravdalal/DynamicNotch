@@ -1165,7 +1165,8 @@ async function fetchWeather() {
     const locRes = await fetch('http://ip-api.com/json/');
     const locData = await locRes.json();
     const city = locData.city;
-    document.getElementById('weatherCity').textContent = city;
+    const cityEl = document.getElementById('weatherCity');
+    if (cityEl) cityEl.textContent = city;
     
     const weatherData = await window.notchAPI.fetchWeather(city);
     if (!weatherData) throw new Error('No weather data');
@@ -1173,7 +1174,8 @@ async function fetchWeather() {
     const temp = weatherData.current.temperature;
     const phrase = weatherData.current.skytext.toLowerCase();
     
-    document.getElementById('weatherTemp').innerHTML = temp + '<span>°F</span>';
+    const tempEl = document.getElementById('weatherTemp');
+    if (tempEl) tempEl.innerHTML = temp + '<span>°F</span>';
     
     const dashWeather = document.getElementById('dashWeather');
     dashWeather.className = 'dash-weather';
@@ -1193,11 +1195,13 @@ async function fetchWeather() {
       icon = phrase.includes('partly') ? '⛅' : '☁️';
     }
     
-    document.getElementById('weatherIcon').textContent = icon;
+    const iconEl = document.getElementById('weatherIcon');
+    if (iconEl) iconEl.textContent = icon;
     
   } catch(e) {
     console.error('Weather error:', e);
-    document.getElementById('weatherCity').textContent = 'Location unavailable';
+    const cityEl = document.getElementById('weatherCity');
+    if (cityEl) cityEl.textContent = 'Location unavailable';
   }
 }
 document.addEventListener('DOMContentLoaded', () => {

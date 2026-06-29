@@ -69,7 +69,7 @@ body{
 .notch.expanded[data-state="bluetooth"]{width:360px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bt-connected"]{width:640px;height:180px;border-radius:0 0 28px 28px}
 .notch.expanded[data-state="bt-music"]{width:520px;height:220px;border-radius:0 0 32px 32px}
-.notch.expanded.forced-full{width:740px !important;height:180px !important;border-radius:0 0 32px 32px !important}
+.notch.expanded.forced-full{width:740px !important;height:160px !important;border-radius:0 0 32px 32px !important}
 
 /* ═══ COLLAPSED BAR ═══ */
 .collapsed-view{
