@@ -1,49 +1,69 @@
+const ical = require('node-ical');
 const fs = require('fs');
 const path = require('path');
 
-async function getCalendarEvents() {
+// To let the user easily configure their iCal link without modifying code:
+const CONFIG_PATH = path.join(__dirname, '..', 'calendar_config.json');
+
+let iCalUrl = '';
+
+// Helper to save/load config
+function loadConfig() {
   try {
-    const eventsPath = path.join(__dirname, '..', 'events.json');
-    const raw = fs.readFileSync(eventsPath, 'utf-8');
-    const events = JSON.parse(raw);
-
-    const now = new Date();
-    const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-    // Filter to upcoming events within the next 3 days
-    const upcoming = events
-      .map(e => {
-        const eventDate = new Date(`${e.date}T${e.time}:00`);
-        return { ...e, dateObj: eventDate };
-      })
-      .filter(e => e.dateObj >= now && e.dateObj <= threeDaysLater)
-      .sort((a, b) => a.dateObj - b.dateObj)
-      .slice(0, 4)
-      .map(e => ({
-        title: e.title,
-        time: e.time,
-        date: e.date,
-        duration: e.duration,
-        color: e.color || '#6C5CE7',
-        relative: getRelativeTime(e.dateObj, now),
-      }));
-
-    return upcoming;
-  } catch (e) {
-    return [];
+    if (fs.existsSync(CONFIG_PATH)) {
+      const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      iCalUrl = data.icalUrl || '';
+    } else {
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify({ icalUrl: "PASTE_YOUR_ICAL_LINK_HERE" }, null, 2));
+    }
+  } catch (err) {
+    console.error('[Calendar Module] Error loading config:', err);
   }
 }
 
-function getRelativeTime(eventDate, now) {
-  const diffMs = eventDate - now;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+async function fetchEventsForToday(targetDate = null) {
+  loadConfig();
+  if (!iCalUrl || iCalUrl === 'PASTE_YOUR_ICAL_LINK_HERE') {
+    return { error: 'Please add your Google Calendar iCal link to calendar_config.json' };
+  }
 
-  if (diffMins < 60) return `in ${diffMins}m`;
-  if (diffHours < 24) return `in ${diffHours}h`;
-  if (diffDays === 1) return 'Tomorrow';
-  return `in ${diffDays} days`;
+  try {
+    const events = await ical.async.fromURL(iCalUrl);
+    
+    // We get events for 'targetDate' (which corresponds to the notch's calendarOffset)
+    const target = targetDate ? new Date(targetDate) : new Date();
+    target.setHours(0,0,0,0);
+    const tomorrow = new Date(target);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let dayEvents = [];
+
+    for (let k in events) {
+      if (events.hasOwnProperty(k)) {
+        let ev = events[k];
+        if (ev.type === 'VEVENT') {
+          let start = new Date(ev.start);
+          let end = new Date(ev.end);
+          // Check if event overlaps with the target day
+          if ((start >= target && start < tomorrow) || (start <= target && end > target)) {
+            dayEvents.push({
+              summary: ev.summary,
+              start: start.toISOString(),
+              end: end.toISOString()
+            });
+          }
+        }
+      }
+    }
+    
+    // Sort chronologically
+    dayEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
+    
+    return dayEvents;
+  } catch (err) {
+    console.error('[Calendar Module] Error fetching events:', err);
+    return { error: 'Failed to fetch events from iCal link' };
+  }
 }
 
-module.exports = { getCalendarEvents };
+module.exports = { fetchEventsForToday };

@@ -202,7 +202,7 @@ ipcMain.handle('transcribe-audio', async (e, pcmData) => {
 });
 
 ipcMain.handle('get-battery', async () => await getBatteryStatus());
-ipcMain.handle('get-calendar', async () => await googleCalendar.getEvents());
+ipcMain.handle('get-calendar', async (_, targetDate) => await googleCalendar.getEvents(targetDate));
 ipcMain.handle('google-calendar-connect', async (e, config) => {
     googleCalendar.saveConfig({ ...config, connected: true });
     return { success: true };

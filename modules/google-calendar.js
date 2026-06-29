@@ -1,13 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const ical = require('node-ical');
 
-// Basic Google Calendar module
-// In a production app, this would handle OAuth2
-// For this assistant demo, we'll implement the structure and allow for an API Key/ID
 class GoogleCalendar {
     constructor() {
         this.configPath = path.join(__dirname, '..', 'calendar-config.json');
-        this.eventsPath = path.join(__dirname, '..', 'events.json');
         this.config = this.loadConfig();
     }
 
@@ -17,7 +14,7 @@ class GoogleCalendar {
                 return JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
             } catch (e) { return {}; }
         }
-        return { apiKey: '', calendarId: '', connected: false };
+        return { icalUrl: 'PASTE_YOUR_ICAL_LINK_HERE' };
     }
 
     saveConfig(config) {
@@ -25,46 +22,49 @@ class GoogleCalendar {
         fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
     }
 
-    async getEvents() {
-        // If not connected, return mocked "Connect Google Calendar" event or existing local events
-        if (!this.config.connected || !this.config.apiKey) {
-            return this.getLocalEvents();
+    async getEvents(targetDateStr) {
+        if (!this.config.icalUrl || this.config.icalUrl === 'PASTE_YOUR_ICAL_LINK_HERE') {
+            return [{ title: "Please add iCal Link in calendar-config.json", time: "Setup", color: "#ea4335" }];
         }
 
         try {
-            // Real fetch from Google Calendar API
-            const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.config.calendarId)}/events?key=${this.config.apiKey}&timeMin=${new Date().toISOString()}&singleEvents=true&orderBy=startTime&maxResults=5`;
-            const fetch = require('node-fetch');
-            const response = await fetch(url);
-            const data = await response.json();
+            const events = await ical.async.fromURL(this.config.icalUrl);
+            
+            const target = targetDateStr ? new Date(targetDateStr) : new Date();
+            const today = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
 
-            if (data.error) {
-                console.error('GCAL Error:', data.error.message);
-                return this.getLocalEvents();
+            let dayEvents = [];
+
+            for (let k in events) {
+                if (events.hasOwnProperty(k)) {
+                    let ev = events[k];
+                    if (ev.type === 'VEVENT') {
+                        let start = new Date(ev.start);
+                        let end = new Date(ev.end);
+                        if ((start >= today && start < tomorrow) || (start <= today && end > today)) {
+                            dayEvents.push({
+                                title: ev.summary,
+                                start: start.toISOString(),
+                                time: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                color: '#4285F4'
+                            });
+                        }
+                    }
+                }
             }
-
-            return (data.items || []).map(item => ({
-                title: item.summary,
-                start: item.start.dateTime || item.start.date,
-                time: item.start.dateTime ? new Date(item.start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All Day',
-                date: item.start.date || item.start.dateTime.split('T')[0],
-                color: '#4285F4'
-            }));
+            
+            dayEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
+            
+            if (dayEvents.length === 0) {
+                return [{ title: "Nothing for today", time: "", color: "#5f6368" }];
+            }
+            return dayEvents;
         } catch (e) {
-            return this.getLocalEvents();
+            console.error('[GoogleCalendar] Error:', e);
+            return [{ title: "Failed to fetch iCal events", time: "Error", color: "#ea4335" }];
         }
-    }
-
-    getLocalEvents() {
-        // Fallback or demonstration data
-        try {
-            if (fs.existsSync(this.eventsPath)) {
-                return JSON.parse(fs.readFileSync(this.eventsPath, 'utf8'));
-            }
-        } catch (e) {}
-        return [
-            { title: "Connect Google Calendar", date: new Date().toISOString().split('T')[0], time: "Setup", color: "#4285F4" }
-        ];
     }
 }
 

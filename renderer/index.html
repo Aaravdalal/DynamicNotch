@@ -62,8 +62,8 @@
         <div class="panel panel-idle" id="panelIdle">
           <div class="dash">
             <div class="dash-header" style="display: flex; margin-bottom: 8px; align-items: center;">
-              <!-- Left side matching Music Column width (380px) -->
-              <div style="flex: 0 0 380px; display: flex; align-items: center; padding-right: 16px;">
+              <!-- Left side matching Music Column width (310px) -->
+              <div style="flex: 0 0 260px; display: flex; align-items: center; padding-right: 8px;">
                 <div class="dash-icons" style="display: flex; gap: 16px; margin-right: auto; color: rgba(255,255,255,0.5);">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/> <!-- Home -->
@@ -76,7 +76,7 @@
               </div>
               
               <!-- Right side matching Widgets Column -->
-              <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; padding-left: 16px;">
+              <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; padding-left: 8px;">
                 <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: auto; margin-right: auto; letter-spacing: -0.01em;" id="bigDate">Sat, Jun 27</div>
                 <div class="dash-battery" id="dashHeaderBattery" style="display: flex; align-items: center;">
                   <span id="dashBattPctText" style="color: #22c55e; font-size: 13px; font-weight: 600;">80%</span>
@@ -91,9 +91,9 @@
 
           <div class="dash-main" style="display: flex; flex: 1; padding: 0;">
             <!-- Music Column -->
-            <div class="dash-music" id="dashMusicCol" style="flex: 0 0 380px; display: flex; flex-direction: row; gap: 16px; align-items: center; padding: 0 16px 0 0; border-right: 1px solid rgba(255,255,255,0.05);">
+            <div class="dash-music" id="dashMusicCol" style="display: flex; flex-direction: row; gap: 12px; align-items: center; padding: 0 8px 0 0; border-right: 1px solid rgba(255,255,255,0.05);">
               <!-- Left Side: Large Album Art -->
-              <div class="dash-art" style="width: 84px; height: 84px; border-radius: 18px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4); position: relative; overflow: hidden;">
+              <div class="dash-art" style="width: 72px; height: 72px; border-radius: 16px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4); position: relative; overflow: hidden;">
                 <img id="dashCoverImg" src="" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; z-index: 2;"/>
                 <div class="dash-art-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#6C5CE7,#a29bfe); opacity: 0.6; font-size: 32px; color: rgba(255,255,255,0.8); position: relative; z-index: 1;">♫</div>
               </div>
@@ -155,7 +155,7 @@
                   <div class="dash-cal-strip" id="dashDays"></div>
                   <div class="dash-cal-footer" id="dashCalFooter">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/></svg>
-                    <span>Nothing for today</span>
+                    <span id="dashFooterText">Nothing for today</span>
                   </div>
                 </div>
               </div>
@@ -163,17 +163,17 @@
             
             <div class="dash-sep" id="dashWidgetSep"></div>
             
-            <div class="dash-widgets" id="dashWidgetsCol" style="flex: 1; display: flex; flex-direction: column; gap: 20px; padding-left: 16px; padding-right: 56px; position: relative; overflow: visible;">
+            <div class="dash-widgets" id="dashWidgetsCol" style="display: flex; flex-direction: column; gap: 12px; padding: 4px 0 4px 8px; position: relative; overflow: visible;">
               <!-- Plus button placed on right edge bridging search and weather -->
-              <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: 56px; right: 42px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); color: #000000; z-index: 10; font-weight: bold;">
+              <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: 44px; right: -4px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); color: #000000; z-index: 10; font-weight: bold;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
 
-              <div class="search-box-container" style="height: 38px;">
-                <div class="search-box" id="searchBoxOuter" style="background: #fff; border-radius: 19px; display: flex; align-items: center; padding: 0 12px; width: 100%; height: 100%; box-sizing: border-box;">
+              <div class="search-box-container" style="height: 32px; position: relative;">
+                <div class="search-box" id="searchBoxOuter" style="background: #fff; border-radius: 16px; display: flex; align-items: center; padding: 0 40px 0 12px; width: 100%; height: 100%; box-sizing: border-box; transition: width 0.3s ease;">
                   <svg id="searchGoogleIcon" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; flex-shrink: 0;">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -181,18 +181,18 @@
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
                   <input type="text" id="dashSearchInput" placeholder="Search Google..." style="border: none; outline: none; background: transparent; padding-left: 12px; font-size: 14px; color: #5f6368; flex: 1; min-width: 0; font-weight: 500;" />
-                  
-                  <div class="search-mic" id="searchMicBtn" title="Search by Voice" style="flex-shrink: 0; cursor: pointer; display: flex; align-items: center;">
-                    <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                      <path fill="#4285f4" d="M12,14c1.66,0,3-1.34,3-3V5c0-1.66-1.34-3-3-3S9,3.34,9,5v6C9,12.66,10.34,14,12,14z"/>
-                      <path fill="#34a853" d="M11,18.92h2V22h-2V18.92z"/>
-                      <path fill="#fbbc04" d="M7,11H5c0,1.93,0.78,3.68,2.05,4.95l1.41-1.41C7.56,13.63,7,12.38,7,11z"/>
-                      <path fill="#ea4335" d="M12,17c-1.66,0-3.15-0.67-4.24-1.76l-1.41,1.41C7.79,18.1,9.8,19,12,19c3.31,0,6-2.69,6-6h-2C16,15.21,14.21,17,12,17z"/>
-                    </svg>
-                  </div>
+                </div>
+                <div class="search-mic" id="searchMicBtn" title="Search by Voice" style="flex-shrink: 0; cursor: pointer; display: flex; align-items: center; position: absolute; right: 4px; top: 50%; transform: translateY(-50%);">
+                  <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="#4285f4" d="M12,14c1.66,0,3-1.34,3-3V5c0-1.66-1.34-3-3-3S9,3.34,9,5v6C9,12.66,10.34,14,12,14z"/>
+                    <path fill="#34a853" d="M11,18.92h2V22h-2V18.92z"/>
+                    <path fill="#fbbc04" d="M7,11H5c0,1.93,0.78,3.68,2.05,4.95l1.41-1.41C7.56,13.63,7,12.38,7,11z"/>
+                    <path fill="#ea4335" d="M12,17c-1.66,0-3.15-0.67-4.24-1.76l-1.41,1.41C7.79,18.1,9.8,19,12,19c3.31,0,6-2.69,6-6h-2C16,15.21,14.21,17,12,17z"/>
+                  </svg>
                 </div>
               </div>
-              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; border-radius: 16px; background: linear-gradient(135deg, #4fa8ff, #3884d6); flex: 1; display: flex; align-items: center; padding: 0 14px;">
+
+              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; border-radius: 16px; margin-right: 0px; background: linear-gradient(135deg, #4fa8ff, #3884d6); flex: 1; display: flex; align-items: center; padding: 0 14px;">
                 <div class="weather-content" style="display: flex; width: 100%; align-items: center; justify-content: space-between;">
                   <div class="weather-left" style="display: flex; align-items: center; gap: 12px;">
                     <div class="weather-icon" id="weatherIcon" style="font-size: 38px;">☀️</div>

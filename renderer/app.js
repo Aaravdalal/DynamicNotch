@@ -409,6 +409,27 @@ function setupInteractions() {
         }
     });
   }
+  
+  // Dashboard calendar view horizontal swipe navigation
+  const dashCal = document.querySelector('.dash-cal');
+
+  if (dashCal) {
+    let lastScrollTime = 0;
+    
+    dashCal.addEventListener('wheel', e => {
+      e.stopPropagation();
+      // Vertical swipe to change days with throttle
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        const now = Date.now();
+        if (now - lastScrollTime > 300) { // 300ms cooldown
+          if (e.deltaY > 0) calendarOffset++;
+          else calendarOffset--;
+          updateClock();
+          lastScrollTime = now;
+        }
+      }
+    });
+  }
 }
 
 /* ─── Clock / Calendar ─── */
@@ -420,9 +441,12 @@ function updateClock() {
 
   const target = new Date(); target.setDate(now.getDate() + calendarOffset);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  
   document.getElementById('dashMonth').textContent = months[target.getMonth()];
 
   const shortDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const fullDays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   
   const cDateEl = document.getElementById('cDate');
   const dateStr = `${shortDays[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
@@ -451,6 +475,9 @@ function updateClock() {
         strip.scrollLeft = activeEl.offsetLeft - strip.offsetWidth / 2 + activeEl.offsetWidth / 2;
       }
     }, 0);
+
+    // Fetch and display events for the current target date
+    fetchCalendar();
   }
 }
 
@@ -463,15 +490,14 @@ function handleMediaUpdate(data) {
 
 async function fetchCalendar() {
   try {
-    const events = await window.notchAPI.getCalendar();
+    const target = new Date();
+    target.setDate(target.getDate() + calendarOffset);
+    
+    const events = await window.notchAPI.getCalendar(target.toISOString());
     const footer = document.getElementById('dashCalFooter');
     if (footer) {
-      const now = new Date();
-      const todayEvent = (events || []).find(e => {
-        const d = new Date(e.date);
-        return d.getDate() === now.getDate() && d.getMonth() === now.getMonth();
-      });
-      if (todayEvent) {
+      if (events && events.length > 0) {
+        const todayEvent = events[0];
         footer.querySelector('span').textContent = todayEvent.title;
         footer.style.color = todayEvent.color || 'rgba(255,255,255,0.35)';
       } else {
@@ -479,7 +505,9 @@ async function fetchCalendar() {
         footer.style.color = 'rgba(255,255,255,0.35)';
       }
     }
-  } catch (e) {}
+  } catch (err) {
+    console.error('Error fetching calendar:', err);
+  }
 }
 
 function getAverageRGB(img) {

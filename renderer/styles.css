@@ -57,7 +57,7 @@ body{
 
 /* Expanded states */
 .notch.expanded{cursor:default}
-.notch.expanded[data-state="idle"]{width:740px;height:210px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="idle"]{width:820px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="charging"],
@@ -67,9 +67,9 @@ body{
 /* Media player - compact standalone island mode */
 .notch.expanded[data-state="music"]{width:370px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bluetooth"]{width:360px;height:140px;border-radius:0 0 32px 32px}
-.notch.expanded[data-state="bt-connected"]{width:640px;height:180px;border-radius:0 0 28px 28px}
+.notch.expanded[data-state="bt-connected"]{width:820px;height:180px;border-radius:0 0 28px 28px}
 .notch.expanded[data-state="bt-music"]{width:520px;height:220px;border-radius:0 0 32px 32px}
-.notch.expanded.forced-full{width:740px !important;height:210px !important;border-radius:0 0 32px 32px !important}
+.notch.expanded.forced-full{width:820px !important;height:210px !important;border-radius:0 0 32px 32px !important}
 
 /* ═══ COLLAPSED BAR ═══ */
 .collapsed-view{
@@ -288,7 +288,7 @@ body{
 
 /* ═══ DASHBOARD (idle) ═══ */
 .panel-idle{background:var(--bg)}
-.dash{padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;color:#fff;
+.dash{padding:16px 6px 16px 16px;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;color:#fff;
   opacity:0;transition:opacity .5s ease .1s;
 }
 .notch.expanded .panel-idle .dash{opacity:1}
@@ -312,14 +312,14 @@ body{
   display:flex;align-items:center;font-size:12px;font-weight:600;color:#fff;
 }
 
-.dash-main{display:flex;flex:1;min-height:0;padding-left:16px;}
+.dash-main{display:flex;flex:1;min-height:0;padding-left:4px;}
 
-.dash-sep{width:1px;background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.1) 80%, transparent);margin:0 24px;align-self:stretch}
+.dash-sep{width:1px;background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.1) 80%, transparent);margin:0 8px;align-self:stretch}
 
-/* music col - MUCH WIDER */
+/* music col */
 .dash-music{
-  flex:1.2;min-width:0;
-  display:flex;flex-direction:row;gap:16px;align-items:center;padding:4px 8px 4px 0;
+  flex:1.0 !important;min-width:0;
+  display:flex;flex-direction:row;gap:10px;align-items:center;padding:4px 4px 4px 0 !important;
   border-right:1px solid rgba(255,255,255,.05);
 }
 .dash-art{position:relative;width:64px;height:64px;border-radius:14px;overflow:hidden;background:#1a1a2e;flex-shrink:0}
@@ -339,11 +339,12 @@ body{
 .dash-album{display:none}
 .dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
-/* calendar col - slimmer to make room for music */
-.dash-cal{flex:0.8;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0}
+/* calendar col - compact */
+.dash-cal{flex:none !important;width:300px !important;height: 60px; transition: height 0.3s cubic-bezier(0.25, 1, 0.5, 1); display:block; margin-left: auto !important; margin-right: 12px !important; overflow: hidden; position: relative;}
+.dash-cal.show-grid { height: 175px; }
 .notch[data-state="music"] .dash-cal, .notch[data-state="music"] .dash-sep {display: none !important;}
 .notch[data-state="bt-music"] .dash-cal, .notch[data-state="bt-music"] .dash-sep {display: none !important;}
-.dash-cal-row{display:flex;align-items:center;justify-content:center;gap:20px;width:max-content}
+.dash-cal-row{display:flex;align-items:center;justify-content:center;gap:20px;width:100%}
 .dash-month-large{display:flex;align-items:center;justify-content:center;gap:4px;font-size:42px;font-weight:900;letter-spacing:-0.06em;color:#fff;line-height:0.8;opacity:0.95;}
 .cal-arrow{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.2s;font-size:14px;background:rgba(255,255,255,0.1);border-radius:50%;padding:4px}
 .cal-arrow:hover{opacity:1;background:rgba(255,255,255,0.2)}
@@ -363,12 +364,15 @@ body{
 .day{
   display:flex;flex-direction:column;align-items:center;
   color:rgba(255,255,255,0.3);font-size:10px;font-weight:700;gap:6px;
-  padding:0;transition:all .2s ease;
+  padding:4px 8px; border-radius: 8px; transition:all .2s ease;
   letter-spacing:0.02em;min-width:28px;
 }
 .day span:last-child{font-size:18px;font-weight:900;letter-spacing:-0.02em;line-height:1;color:rgba(255,255,255,0.15)}
+.day.active {
+  background: rgba(255, 255, 255, 0.15);
+}
 .day.active span:last-child{
-  color:#007AFF; /* Precise Apple Blue */
+  color:#fff;
 }
 .day.active span:first-child{
   color:rgba(255,255,255,0.9);
@@ -476,11 +480,16 @@ body{
 
 /* Widgets Column */
 .dash-widgets {
-  flex: 0.9;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 12px 4px 0;
+  flex: none !important;
+  width: 380px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px;
+  padding: 4px 0 4px 12px !important;
+  margin-left: auto !important;
+  margin-right: 24px !important;
+  transform: none !important;
+  transition: background 0.2s;
 }
 .search-box-container {
   display: flex;
@@ -542,20 +551,27 @@ body{
   z-index: 2;
 }
 
-.search-box-container:has(.search-mic:hover) .search-mic {
-  right: -42px;
-  width: 36px;
-  height: 36px;
-  background: #fff;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+.search-box-container:has(.search-mic:hover) .search-box {
+    width: calc(100% - 40px) !important;
 }
 
-.search-box-container:has(.search-mic:hover) .search-box {
-  width: calc(100% - 48px);
+.search-mic:hover {
+    width: 32px;
+    height: 32px;
+    background: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
 .search-mic:hover svg {
-  transform: scale(1.1);
+    transform: scale(1.1);
+}
+
+.dash-battery {
+    margin-right: 24px;
+}
+#dashBattPctText {
+    line-height: 1;
+    transform: translateY(-1px);
 }
 
 .search-box:focus-within {
@@ -693,3 +709,5 @@ body{
 .team-name { font-size: 14px; font-weight: 700; color: #fff; }
 .team-score { font-size: 16px; font-weight: 800; color: #fff; }
 .sports-status { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; text-align: center; }
+
+
