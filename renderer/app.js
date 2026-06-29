@@ -36,6 +36,7 @@ const panelMap = {
   charging:        'panelCharging',
   'low-battery':   'panelLowBattery',
   slider:          'panelSlider',
+  'file-tray':     'panelIdle'
 };
 
 function hideAllPanels() {
@@ -68,6 +69,19 @@ function showActivePanel() {
     if (forcedEl) {
       if (forcedEl.style.display !== 'flex') forcedEl.style.display = 'flex';
       forcedEl.style.opacity = '1';
+    }
+  }
+
+  // Handle inner content of panelIdle (Dashboard Main vs File Tray)
+  const dashMain = document.getElementById('dashMainContent');
+  const dashFileTray = document.getElementById('dashFileTrayContent');
+  if (dashMain && dashFileTray) {
+    if (currentState === 'file-tray') {
+      dashMain.style.display = 'none';
+      dashFileTray.style.display = 'flex';
+    } else {
+      dashMain.style.display = 'flex';
+      dashFileTray.style.display = 'none';
     }
   }
 }
@@ -108,6 +122,7 @@ function handleBluetoothUpdate(device) {
 
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
+  if (currentState === 'file-tray') return; // Don't override file tray while active
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
@@ -143,6 +158,7 @@ function collapse() {
   if (!isExpanded) return;
   isExpanded = false;
   forcedPanel = null; // Reset pin
+  if (currentState === 'file-tray') currentState = 'idle';
   hideAllPanels();
   notch.classList.remove('expanded');
   notch.classList.add('collapsed');
@@ -165,6 +181,7 @@ function setupInteractions() {
     const searchInput = document.getElementById('dashSearchInput');
     if (searchInput && document.activeElement === searchInput) return;
     if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+    if (currentState === 'file-tray') return; // Do not collapse when dropping files
     if (isExpanded) {
         collapse();
     }
@@ -175,6 +192,26 @@ function setupInteractions() {
     if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; } 
     expand(); 
   });
+
+  const dashOpenTrayBtn = document.getElementById('dashOpenTrayBtn');
+  if (dashOpenTrayBtn) {
+    dashOpenTrayBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      console.log('[App] dashOpenTrayBtn clicked — opening file tray. Current state:', currentState, 'isExpanded:', isExpanded);
+      if (currentState === 'file-tray' && isExpanded) {
+        collapse();
+        return;
+      }
+      currentState = 'file-tray';
+      notch.setAttribute('data-state', 'file-tray');
+      if (!isExpanded) {
+        expand();
+      } else {
+        showActivePanel();
+      }
+      renderFileTray();
+    });
+  }
 
   const sub = document.getElementById('subNotch');
   if (sub) {
@@ -1239,4 +1276,208 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 setInterval(fetchWeather, 3600000);
+
+// --- FILE TRAY LOGIC ---
+let dragLeaveTimer;
+
+async function renderFileTray() {
+  const files = await window.notchAPI.getTrayFiles();
+  const dropzone = document.getElementById('ftDropzone');
+  const emptyText = document.getElementById('ftEmptyText');
+  
+  dropzone.querySelectorAll('.ft-file').forEach(el => el.remove());
+  
+  if (files.length > 0) {
+    emptyText.style.display = 'none';
+  } else {
+    emptyText.style.display = 'flex';
+  }
+  
+  files.forEach(file => {
+    const el = document.createElement('div');
+    el.className = 'ft-file';
+    el.draggable = true;
+    
+    const ext = file.name.split('.').pop().substring(0, 4);
+    const isImg = file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+    
+    let innerHtml = '';
+    if (file.isDir) {
+      innerHtml = `<img src="../assets/folder.png" />`;
+    } else if (isImg) {
+      innerHtml = `<img src="file://${file.path.replace(/\\/g, '/')}" />`;
+    } else if (file.icon) {
+      innerHtml = `<img src="${file.icon}" />`;
+    } else {
+      innerHtml = `<span class="ft-file-ext">${ext}</span>`;
+    }
+    
+    el.innerHTML = `
+      <div class="ft-file-thumb-container">
+        ${innerHtml}
+      </div>
+      <div class="ft-file-del">×</div>
+      <div class="ft-file-name-label" title="${file.name}">${file.name}</div>
+    `;
+    
+    const delBtn = el.querySelector('.ft-file-del');
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
+      await window.notchAPI.removeTrayFile(file.path);
+      renderFileTray();
+    };
+    
+    el.ondragstart = (e) => {
+      e.preventDefault();
+      window.notchAPI.startDragOut(file.path);
+    };
+    
+    dropzone.appendChild(el);
+  });
+}
+
+document.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.types.includes('Files')) {
+    clearTimeout(dragLeaveTimer);
+    if (currentState !== 'file-tray') {
+      currentState = 'file-tray';
+      notch.setAttribute('data-state', 'file-tray');
+      if (!isExpanded) {
+        expand();
+      } else {
+        showActivePanel();
+      }
+      renderFileTray();
+    }
+    document.getElementById('ftDropzone').classList.add('drag-over');
+  }
+});
+
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  clearTimeout(dragLeaveTimer);
+  // Highlight Quick Share icon when hovering over it
+  const qsIcon = document.getElementById('quickShareIcon');
+  if (qsIcon) {
+    if (qsIcon.contains(e.target) || qsIcon === e.target) {
+      qsIcon.style.background = 'rgba(66, 133, 244, 0.4)';
+      qsIcon.style.transform = 'scale(1.1)';
+      qsIcon.style.transition = 'all 0.2s ease';
+    } else {
+      qsIcon.style.background = '';
+      qsIcon.style.transform = '';
+    }
+  }
+});
+
+document.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  const dropzone = document.getElementById('ftDropzone');
+  if(dropzone) dropzone.classList.remove('drag-over');
+  const qsIcon = document.getElementById('quickShareIcon');
+  if (qsIcon) {
+    qsIcon.style.background = '';
+    qsIcon.style.transform = '';
+  }
+  
+  dragLeaveTimer = setTimeout(() => {
+    if (currentState === 'file-tray') {
+      collapse();
+    }
+  }, 300);
+});
+
+document.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  document.getElementById('ftDropzone').classList.remove('drag-over');
+  const qsIcon = document.getElementById('quickShareIcon');
+  if (qsIcon) {
+    qsIcon.style.background = '';
+    qsIcon.style.transform = '';
+  }
+  
+  const files = [];
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    for (const f of e.dataTransfer.files) {
+      files.push(f.path);
+    }
+  } else if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    for (const item of e.dataTransfer.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f) files.push(f.path);
+      }
+    }
+  }
+  
+  console.log('[App] Drop event detected! Files length:', files.length, 'Files:', files);
+  
+  // Check if drop landed on the Quick Share area
+  const qsArea = document.querySelector('.ft-left');
+  const isQuickShareDrop = qsArea && (qsArea.contains(e.target) || qsArea === e.target);
+  console.log('[App] isQuickShareDrop:', isQuickShareDrop, 'Target:', e.target.className);
+  
+  // Handle routing based on drop target
+  if (files.length > 0) {
+    if (isQuickShareDrop) {
+      console.log('[App] Sharing files via Quick Share (document listener):', files);
+      // Store the file in the tray so they can drag it from the notch
+      await window.notchAPI.storeFiles(files);
+      renderFileTray();
+      // Open Quick Share app
+      await window.notchAPI.shareFiles(files);
+    } else {
+      console.log('[App] Storing files in file tray:', files);
+      await window.notchAPI.storeFiles(files);
+      renderFileTray();
+    }
+  }
+  
+  if (!isQuickShareDrop) {
+    setTimeout(() => {
+      if (currentState === 'file-tray') {
+        collapse();
+      }
+    }, 2000);
+  }
+});
+
+  // (Explicit quick share icon listeners removed to unify logic in the document drop handler)
+if (window.notchAPI.onOpenFileTray) {
+  window.notchAPI.onOpenFileTray(() => {
+    console.log('[App] Tray icon clicked — opening file tray. Current state:', currentState, 'isExpanded:', isExpanded);
+    if (currentState === 'file-tray' && isExpanded) {
+      // Already showing file tray — toggle it closed
+      collapse();
+      return;
+    }
+    currentState = 'file-tray';
+    notch.setAttribute('data-state', 'file-tray');
+    if (!isExpanded) {
+      expand();
+    } else {
+      showActivePanel();
+    }
+    renderFileTray();
+  });
+}
+
+// Show toast when share is initiated
+if (window.notchAPI.onShareInitiated) {
+  window.notchAPI.onShareInitiated((paths) => {
+    console.log('[App] Share initiated for:', paths);
+    // Show a brief visual confirmation on the Quick Share icon
+    const qsIcon = document.getElementById('quickShareIcon');
+    if (qsIcon) {
+      qsIcon.style.background = 'rgba(34, 197, 94, 0.4)';
+      qsIcon.style.transform = 'scale(1.15)';
+      qsIcon.style.transition = 'all 0.3s ease';
+      setTimeout(() => {
+        qsIcon.style.background = '';
+        qsIcon.style.transform = '';
+      }, 1500);
+    }
+  });
+}
 

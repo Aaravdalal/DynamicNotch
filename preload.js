@@ -42,5 +42,15 @@ contextBridge.exposeInMainWorld('notchAPI', {
   openCalendar: () => ipcRenderer.invoke('open-calendar'),
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
   fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
-  simulateWinH: () => ipcRenderer.invoke('simulate-win-h')
+  simulateWinH: () => ipcRenderer.invoke('simulate-win-h'),
+  
+  // File Tray APIs
+  storeFiles: (paths) => ipcRenderer.invoke('store-files', paths),
+  getTrayFiles: () => ipcRenderer.invoke('get-tray-files'),
+  removeTrayFile: (path) => ipcRenderer.invoke('remove-tray-file', path),
+  startDragOut: (path) => ipcRenderer.send('start-drag-out', path),
+  onOpenFileTray: (callback) => ipcRenderer.on('open-file-tray', callback),
+  openQuickShare: () => ipcRenderer.invoke('open-quickshare'),
+  shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),
+  onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths))
 });

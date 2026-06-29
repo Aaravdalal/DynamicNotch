@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { getMediaInfo, controlMedia } = require('./modules/media');
@@ -6,6 +6,7 @@ const googleCalendar = require('./modules/google-calendar');
 const { startBluetoothMonitor } = require('./modules/bluetooth');
 const { getRecordingStatus } = require('./modules/recording');
 const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
+const { initFileTray } = require('./modules/file-tray');
 const { spawn } = require('child_process');
 
 let mainWindow;
@@ -118,10 +119,18 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createEmpty();
+  const iconB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABVSURBVFhH7ZHRBgAgEATv/3+6no6zOaLaJTvMS2JWRZgzRlGCB3gAdUCN7fgEjHQ+BWMoBYxS44k0nkjj/4J/e9sWvMhQGk89YDlgq38BD1COMMbEBAPBZqj6ppdVAAAAAElFTkSuQmCC';
+  const icon = nativeImage.createFromDataURL(iconB64);
   tray = new Tray(icon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Notch', click: () => mainWindow.show() },
+    { label: 'Open Saved Files', click: () => {
+        const fileTrayPath = path.join(app.getPath('userData'), 'file-tray');
+        if (!fs.existsSync(fileTrayPath)) {
+            fs.mkdirSync(fileTrayPath, { recursive: true });
+        }
+        shell.openPath(fileTrayPath);
+    }},
     { label: 'Test AirPods', click: () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('bluetooth-update', {name: "AirPods", connected: true, battery: 72, type: "earbuds"});
@@ -132,7 +141,18 @@ function createTray() {
     { label: 'Quit', click: () => app.quit() },
   ]);
   tray.setToolTip('Dynamic Notch');
-  tray.setContextMenu(contextMenu);
+
+  // Left-click: open file tray in the notch
+  tray.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('open-file-tray');
+    }
+  });
+
+  // Right-click: show context menu (don't use setContextMenu — it hijacks left-click on Windows)
+  tray.on('right-click', () => {
+    tray.popUpContextMenu(contextMenu);
+  });
 }
 
 ipcMain.handle('control-media', async (_, action) => await controlMedia(action));
@@ -252,6 +272,7 @@ ipcMain.handle('select-profile-image', async () => {
   });
 
 app.whenReady().then(() => {
+  initFileTray();
   const { session } = require('electron');
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
     return true;
