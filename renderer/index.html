@@ -61,7 +61,7 @@
       <!-- ═══ PANEL: IDLE (Dashboard) ═══ -->
         <div class="panel panel-idle" id="panelIdle">
           <div class="dash">
-            <div class="dash-header" style="display: flex; margin-bottom: 12px; align-items: center;">
+            <div class="dash-header" style="display: flex; margin-bottom: 8px; align-items: center;">
               <!-- Left side matching Music Column width (380px) -->
               <div style="flex: 0 0 380px; display: flex; align-items: center; padding-right: 16px;">
                 <div class="dash-icons" style="display: flex; gap: 16px; margin-right: auto; color: rgba(255,255,255,0.5);">
@@ -163,17 +163,17 @@
             
             <div class="dash-sep" id="dashWidgetSep"></div>
             
-            <div class="dash-widgets" id="dashWidgetsCol" style="flex: 1; display: flex; flex-direction: column; gap: 10px; padding-left: 16px; padding-right: 16px; position: relative; overflow: visible;">
+            <div class="dash-widgets" id="dashWidgetsCol" style="flex: 1; display: flex; flex-direction: column; gap: 20px; padding-left: 16px; padding-right: 56px; position: relative; overflow: visible;">
               <!-- Plus button placed on right edge bridging search and weather -->
-              <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: 40px; right: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); color: #000000; z-index: 10; font-weight: bold;">
+              <div class="dash-add-widget" id="addWidgetBtn" style="position: absolute; top: 56px; right: 42px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); color: #000000; z-index: 10; font-weight: bold;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
 
-              <div class="search-box-container" style="height: 32px;">
-                <div class="search-box" id="searchBoxOuter" style="background: #fff; border-radius: 19px; display: flex; align-items: center; padding: 0 16px; width: 100%; height: 100%; box-sizing: border-box;">
+              <div class="search-box-container" style="height: 38px;">
+                <div class="search-box" id="searchBoxOuter" style="background: #fff; border-radius: 19px; display: flex; align-items: center; padding: 0 12px; width: 100%; height: 100%; box-sizing: border-box;">
                   <svg id="searchGoogleIcon" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; flex-shrink: 0;">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -192,12 +192,12 @@
                   </div>
                 </div>
               </div>
-              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; border-radius: 16px; background: linear-gradient(135deg, #4fa8ff, #3884d6); flex: 1; display: flex; align-items: center; padding: 0 16px;">
+              <div class="dash-weather weather-sunny" id="dashWeather" style="position: relative; border-radius: 16px; background: linear-gradient(135deg, #4fa8ff, #3884d6); flex: 1; display: flex; align-items: center; padding: 0 14px;">
                 <div class="weather-content" style="display: flex; width: 100%; align-items: center; justify-content: space-between;">
                   <div class="weather-left" style="display: flex; align-items: center; gap: 12px;">
                     <div class="weather-icon" id="weatherIcon" style="font-size: 38px;">☀️</div>
                     <div class="weather-temp-group" style="display: flex; flex-direction: column;">
-                      <div class="weather-temp" id="weatherTemp" style="font-size: 32px; font-weight: 700; color: #fff; line-height: 1;">71<span style="font-size: 16px; font-weight: 600;">°F</span></div>
+                      <div class="weather-temp" id="weatherTemp" style="font-size: 36px; font-weight: 700; color: #fff; line-height: 1;">68<span style="font-size: 16px; font-weight: 600;">°F</span></div>
                       <div class="weather-city" id="weatherCity" style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px;">Detecting...</div>
                     </div>
                   </div>

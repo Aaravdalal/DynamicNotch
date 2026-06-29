@@ -57,7 +57,7 @@ body{
 
 /* Expanded states */
 .notch.expanded{cursor:default}
-.notch.expanded[data-state="idle"]{width:740px;height:230px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="idle"]{width:740px;height:210px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="charging"],
@@ -69,7 +69,7 @@ body{
 .notch.expanded[data-state="bluetooth"]{width:360px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bt-connected"]{width:640px;height:180px;border-radius:0 0 28px 28px}
 .notch.expanded[data-state="bt-music"]{width:520px;height:220px;border-radius:0 0 32px 32px}
-.notch.expanded.forced-full{width:740px !important;height:160px !important;border-radius:0 0 32px 32px !important}
+.notch.expanded.forced-full{width:740px !important;height:210px !important;border-radius:0 0 32px 32px !important}
 
 /* ═══ COLLAPSED BAR ═══ */
 .collapsed-view{
@@ -288,8 +288,7 @@ body{
 
 /* ═══ DASHBOARD (idle) ═══ */
 .panel-idle{background:var(--bg)}
-.dash{
-  display:flex;flex-direction:column;width:100%;height:100%;padding:10px 18px;color:#fff;
+.dash{padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;color:#fff;
   opacity:0;transition:opacity .5s ease .1s;
 }
 .notch.expanded .panel-idle .dash{opacity:1}
@@ -488,7 +487,7 @@ body{
   align-items: center;
   position: relative;
   width: 100%;
-  height: 36px;
+  height: 44px;
 }
 
 .search-box {
