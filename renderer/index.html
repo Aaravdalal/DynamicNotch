@@ -65,7 +65,7 @@
               <!-- Left side matching Music Column width (310px) -->
               <div style="flex: 0 0 260px; display: flex; align-items: center; padding-right: 8px;">
                 <div class="dash-icons" style="display: flex; gap: 16px; margin-right: auto; color: rgba(255,255,255,0.5);">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <svg id="dashHomeBtn" style="cursor: pointer;" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/> <!-- Home -->
                   </svg>
                   <svg id="dashOpenTrayBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Open File Tray">
@@ -94,9 +94,13 @@
             <!-- Music Column -->
             <div class="dash-music" id="dashMusicCol" style="display: flex; flex-direction: row; gap: 12px; align-items: center; padding: 0 8px 0 0; border-right: 1px solid rgba(255,255,255,0.05);">
               <!-- Left Side: Large Album Art -->
-              <div class="dash-art" style="width: 72px; height: 72px; border-radius: 16px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4); position: relative; overflow: hidden;">
-                <img id="dashCoverImg" src="" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; z-index: 2;"/>
-                <div class="dash-art-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#6C5CE7,#a29bfe); opacity: 0.6; font-size: 32px; color: rgba(255,255,255,0.8); position: relative; z-index: 1;">♫</div>
+              <div class="dash-art" style="width: 72px; height: 72px; border-radius: 16px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4); position: relative; overflow: hidden; cursor: pointer;" id="dashArtContainer">
+                <img id="dashCoverImg" src="" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; z-index: 2; pointer-events: none;"/>
+                <div id="ytPlayOverlay" style="display: none; position: absolute; inset: 0; z-index: 3; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <webview id="dashYtIframe" style="display: none; position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; border: none; object-fit: cover;"></webview>
+                <div class="dash-art-placeholder" id="dashArtPlaceholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#6C5CE7,#a29bfe); opacity: 0.6; font-size: 32px; color: rgba(255,255,255,0.8); position: relative; z-index: 1;">♪</div>
               </div>
               
               <!-- Right Side: Details and Controls -->
@@ -353,6 +357,13 @@
           </svg>
         </div>
       </div>
+      <div class="panel panel-video" id="panelVideo">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div style="color: #fff; font-size: 14px; font-weight: 600;">YouTube Player</div>
+    <svg id="closeVideoBtn" style="cursor:pointer; color:rgba(255,255,255,0.7);" width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+  </div>
+  <webview id="mainYtIframe" style="flex:1; width:100%; border:none; border-radius: 12px; object-fit: cover;"></webview>
+</div>
       <div class="panel panel-pill" id="panelRecording">
         <div class="pill-l">
           <div class="pill-wave" id="pillRecWave">
@@ -431,3 +442,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
+
+
+

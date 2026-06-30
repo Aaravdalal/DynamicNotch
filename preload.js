@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('notchAPI', {
   loadProfileImage: () => ipcRenderer.invoke('load-profile-image'),
   openCalendar: () => ipcRenderer.invoke('open-calendar'),
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
+  getYoutubeStream: (id) => ipcRenderer.invoke('get-youtube-stream', id),
   fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
   simulateWinH: () => ipcRenderer.invoke('simulate-win-h'),
   
@@ -54,3 +55,4 @@ contextBridge.exposeInMainWorld('notchAPI', {
   shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),
   onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths))
 });
+

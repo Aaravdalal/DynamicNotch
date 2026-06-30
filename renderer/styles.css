@@ -59,6 +59,10 @@ html, body {
 
 /* Expanded states */
 .notch.expanded{cursor:default}
+.notch.expanded[data-state="video"]{width:560px;height:340px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1}
+.panel-video{background:#000; width:100%; height:100%; display:none; flex-direction:column; opacity:0; transition:opacity .3s ease; padding: 12px; box-sizing: border-box;}
+.notch.expanded .panel-video iframe{border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);}
 .notch.expanded[data-state="idle"]{width:820px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
@@ -72,7 +76,7 @@ html, body {
 .notch.expanded[data-state="bluetooth"]{width:360px;height:140px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="bt-connected"]{width:820px;height:180px;border-radius:0 0 28px 28px}
 .notch.expanded[data-state="bt-music"]{width:520px;height:220px;border-radius:0 0 32px 32px}
-.notch.expanded.forced-full{width:820px !important;height:210px !important;border-radius:0 0 32px 32px !important}
+.notch.expanded.forced-full{width:820px !important;height:460px !important;border-radius:0 0 32px 32px !important}
 
 /* ═══ COLLAPSED BAR ═══ */
 .collapsed-view{
@@ -200,6 +204,10 @@ html, body {
   border-radius:inherit;overflow:hidden;
 }
 .notch.expanded .panel{pointer-events:all}
+.notch.expanded[data-state="video"]{width:560px;height:340px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1}
+.panel-video{background:#000; width:100%; height:100%; display:none; flex-direction:column; opacity:0; transition:opacity .3s ease; padding: 12px; box-sizing: border-box;}
+.notch.expanded .panel-video iframe{border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);}
 .notch.expanded[data-state="idle"] .panel-idle,
 .notch.expanded[data-state="music"] .panel-idle,
 .notch.expanded[data-state="hover"] .panel-hover,
@@ -762,5 +770,7 @@ html, body {
 .team-name { font-size: 14px; font-weight: 700; color: #fff; }
 .team-score { font-size: 16px; font-weight: 800; color: #fff; }
 .sports-status { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; text-align: center; }
+
+
 
 

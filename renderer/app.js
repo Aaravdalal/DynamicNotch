@@ -236,13 +236,33 @@ function setupInteractions() {
   document.getElementById('playBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
   document.getElementById('nextBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
   
-  const chevronBtn = document.getElementById('queueBtn');
-  if (chevronBtn) {
-    chevronBtn.addEventListener('click', e => {
+  const queueBtn = document.getElementById('queueBtn');
+  if (queueBtn) {
+    queueBtn.addEventListener('click', e => {
       e.stopPropagation();
       forcedPanel = 'panelIdle';
       notch.classList.add('forced-full');
       showActivePanel();
+    });
+  }
+
+
+
+  // YouTube Play Button Click
+  const dashArtContainer = document.getElementById('dashArtContainer');
+  if (dashArtContainer) {
+    dashArtContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (mediaData && mediaData.videoId) {
+        const iframe = document.getElementById('dashYtIframe');
+        const overlay = document.getElementById('ytPlayOverlay');
+        if (iframe && overlay) {
+          overlay.style.display = 'none';
+          iframe.style.display = 'block';
+          // Expand the dash art slightly to make it somewhat watchable? Or just 72x72 is fine? Let's just set the src.
+          iframe.src = `https://www.youtube.com/embed/${mediaData.videoId}?autoplay=1`;
+        }
+      }
     });
   }
 
@@ -624,9 +644,25 @@ function updateMusicUI() {
       cAlbum.src = mediaData.artUrl;
       cAlbum.style.display = 'block';
       const dashImg = document.getElementById('dashCoverImg');
-      const dashPh = document.querySelector('.dash-art-placeholder');
+      const dashPh = document.getElementById('dashArtPlaceholder');
+      const ytPlayOverlay = document.getElementById('ytPlayOverlay');
+      const ytIframe = document.getElementById('dashYtIframe');
+      
       if (dashImg) { dashImg.src = mediaData.artUrl; dashImg.style.display = 'block'; }
       if (dashPh) { dashPh.style.display = 'none'; }
+      
+      if (mediaData.videoId) {
+        if (ytPlayOverlay) ytPlayOverlay.style.display = 'flex';
+        // Hide iframe initially if the track changes
+        if (ytIframe && !ytIframe.src.includes(mediaData.videoId)) {
+            ytIframe.style.display = 'none';
+            ytIframe.src = '';
+        }
+      } else {
+        if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
+        if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
+      }
+
       const btmuImg = document.getElementById('btmuCoverImg');
       const btmuPh = document.getElementById('btmuAlbumPh');
       if (btmuImg) { btmuImg.src = mediaData.artUrl; btmuImg.style.display = 'block'; }
@@ -642,8 +678,12 @@ function updateMusicUI() {
       if (btmuPh) btmuPh.style.display = 'flex';
       const dashImg = document.getElementById('dashCoverImg');
       if (dashImg) dashImg.style.display = 'none';
-      const dashPh = document.querySelector('.dash-art-placeholder');
+      const dashPh = document.getElementById('dashArtPlaceholder');
       if (dashPh) dashPh.style.display = 'flex';
+      const ytPlayOverlay = document.getElementById('ytPlayOverlay');
+      const ytIframe = document.getElementById('dashYtIframe');
+      if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
+      if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
     }
   } else {
     const songTitle = document.getElementById('songTitle');
@@ -1480,4 +1520,5 @@ if (window.notchAPI.onShareInitiated) {
     }
   });
 }
+
 

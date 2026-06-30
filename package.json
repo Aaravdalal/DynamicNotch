@@ -8,6 +8,7 @@
     "build": "electron-builder"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@tabler/icons": "^3.40.0",
     "node-fetch": "^2.7.0",
     "node-ical": "^0.26.1",

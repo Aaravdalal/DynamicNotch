@@ -9,17 +9,32 @@ class MediaMonitor extends EventEmitter {
         this.cachedArt = {};
         this.monitorProc = null;
         this.buffer = '';
+        this.destroyed = false;
         this.startMonitor();
     }
 
+    destroy() {
+        this.destroyed = true;
+        if (this.monitorProc) {
+            try { this.monitorProc.kill(); } catch (e) {}
+            this.monitorProc = null;
+        }
+    }
+
     startMonitor() {
+        if (this.destroyed) return;
         const scriptPath = path.join(__dirname, '..', 'scripts', 'monitor-titles.ps1');
-        this.monitorProc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
+        try {
+            this.monitorProc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
+        } catch (e) {
+            console.error('Failed to spawn monitor:', e.message);
+            return;
+        }
 
         this.monitorProc.stdout.on('data', (data) => {
             this.buffer += data.toString();
             const lines = this.buffer.split(/\r?\n/);
-            this.buffer = lines.pop(); // Keep partial line in buffer
+            this.buffer = lines.pop();
 
             const titles = [];
             for (let line of lines) {
@@ -36,11 +51,17 @@ class MediaMonitor extends EventEmitter {
         });
 
         this.monitorProc.stderr.on('data', (data) => {
-            console.error(`Monitor Error: ${data}`);
+            // Suppress noisy errors
+        });
+
+        this.monitorProc.on('error', (err) => {
+            console.error('Monitor process error:', err.message);
         });
 
         this.monitorProc.on('close', () => {
-            setTimeout(() => this.startMonitor(), 5000); // restart if crashes
+            if (!this.destroyed) {
+                setTimeout(() => this.startMonitor(), 5000);
+            }
         });
     }
 
@@ -66,8 +87,9 @@ class MediaMonitor extends EventEmitter {
                 }
                 if (detected) break;
             }
-            if (lowTitle.includes(' - youtube')) {
-                const part = item.title.split(' - YouTube')[0];
+            const ytIdx = lowTitle.indexOf(' - youtube');
+            if (ytIdx !== -1) {
+                const part = item.title.substring(0, ytIdx);
                 detected = { artist: 'YouTube', track: part, source: 'YouTube' };
                 break;
             }
@@ -92,14 +114,23 @@ class MediaMonitor extends EventEmitter {
             }
             const changed = detected.track !== this.lastMediaInfo.track || detected.artist !== this.lastMediaInfo.artist || !this.lastMediaInfo.playing;
             if (changed) {
-                const artUrl = await this.fetchArt(detected.artist, detected.track);
+                // Fetch art with a hard timeout — never let it block the update
+                let artResult = { url: '', duration: 0 };
+                try {
+                    const artPromise = this.fetchArt(detected.artist, detected.track);
+                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ url: '', duration: 0 }), 5000));
+                    artResult = await Promise.race([artPromise, timeoutPromise]);
+                } catch (e) {
+                    console.error('fetchArt error:', e.message);
+                }
                 this.lastMediaInfo = {
                     playing: true,
                     paused: false,
                     artist: detected.artist,
                     track: detected.track,
-                    artUrl: artUrl.url,
-                    duration: artUrl.duration,
+                    artUrl: artResult.url,
+                    duration: artResult.duration,
+                    videoId: artResult.videoId || null,
                     source: detected.source
                 };
                 this.emit('update', this.lastMediaInfo);
@@ -116,15 +147,63 @@ class MediaMonitor extends EventEmitter {
     async fetchArt(artist, track) {
         const query = `${artist} ${track}`;
         if (this.cachedArt[query]) return this.cachedArt[query];
+
+        if (artist === 'YouTube') {
+            try {
+                const fetch = require('node-fetch');
+                const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(track)}`;
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch(searchUrl, { signal: controller.signal });
+                clearTimeout(timeout);
+                const html = await res.text();
+                const match = html.match(/watch\?v=([a-zA-Z0-9_-]{11})/);
+                if (match && match[1]) {
+                    const videoId = match[1];
+                    const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+                    const artInfo = { url, duration: 0, videoId };
+                    this.cachedArt[query] = artInfo;
+                    return artInfo;
+                }
+            } catch (e) {
+                console.error('youtube scrape error:', e.message);
+            }
+
+            // Final YouTube fallback: try iTunes search with just the track name
+            try {
+                const fetch = require('node-fetch');
+                const url = `https://itunes.apple.com/search?term=${encodeURIComponent(track)}&media=music&limit=1`;
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeout);
+                const json = await res.json();
+                if (json.results && json.results.length > 0) {
+                    const artUrl = json.results[0].artworkUrl100.replace('100x100', '300x300');
+                    const duration = json.results[0].trackTimeMillis || 0;
+                    const artInfo = { url: artUrl, duration };
+                    this.cachedArt[query] = artInfo;
+                    return artInfo;
+                }
+            } catch (e) {}
+
+            // Absolute last resort: no art, but still return so the update fires
+            return { url: '', duration: 0 };
+        }
+
+        // Non-YouTube (Spotify etc): use iTunes
         try {
             const fetch = require('node-fetch');
             const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=1`;
-            const res = await fetch(url);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeout);
             const json = await res.json();
             if (json.results && json.results.length > 0) {
-                const url = json.results[0].artworkUrl100.replace('100x100', '300x300');
+                const artUrl = json.results[0].artworkUrl100.replace('100x100', '300x300');
                 const duration = json.results[0].trackTimeMillis || 0;
-                const artInfo = { url, duration };
+                const artInfo = { url: artUrl, duration };
                 this.cachedArt[query] = artInfo;
                 return artInfo;
             }
@@ -152,6 +231,7 @@ async function controlMedia(action) {
 module.exports = { 
     getMediaInfo: () => monitor.getMediaInfo(), 
     controlMedia,
+    destroyMediaMonitor: () => monitor.destroy(),
     onMediaUpdate: (cb) => {
         monitor.on('update', cb);
         // If already playing, emit the current state immediately to the new listener

@@ -9,10 +9,50 @@ const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
 const { initFileTray } = require('./modules/file-tray');
 const { spawn } = require('child_process');
 
+// ─── Global crash prevention ───
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH PREVENTED] uncaughtException:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH PREVENTED] unhandledRejection:', reason);
+});
+
 let mainWindow;
 let tray;
+let alwaysOnTopInterval = null;
 const userDataPath = app.getPath('userData');
 const profileImageStore = path.join(userDataPath, 'profileImage.json');
+
+// ─── Track all child processes for cleanup ───
+const childProcesses = [];
+
+function spawnTracked(...args) {
+  const proc = spawn(...args);
+  childProcesses.push(proc);
+  proc.on('error', (err) => {
+    console.error(`[Child Process Error] ${args[0]}:`, err.message);
+  });
+  proc.on('close', () => {
+    const idx = childProcesses.indexOf(proc);
+    if (idx > -1) childProcesses.splice(idx, 1);
+  });
+  return proc;
+}
+
+function killAllChildren() {
+  for (const proc of childProcesses) {
+    try { proc.kill(); } catch (e) {}
+  }
+  childProcesses.length = 0;
+}
+
+function safeSend(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send(channel, data);
+    } catch (e) {}
+  }
+}
 
 const WIN_WIDTH = 1100;
 const WIN_HEIGHT = 450; 
@@ -36,6 +76,7 @@ function createWindow() {
     focusable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      webviewTag: true,
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false
@@ -53,52 +94,79 @@ function createWindow() {
     console.log(`[Renderer] ${message}`);
   });
 
-  startBatteryMonitor((batState) => {
+  // ─── Re-assert always-on-top periodically (prevents z-order loss) ───
+  alwaysOnTopInterval = setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('battery-update', batState);
+      try {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch (e) {}
     }
+  }, 2000);
+
+  // Re-assert on focus events
+  mainWindow.on('blur', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch (e) {}
+    }
+  });
+
+  mainWindow.on('show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch (e) {}
+    }
+  });
+
+  // Clean up on window close
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (alwaysOnTopInterval) {
+      clearInterval(alwaysOnTopInterval);
+      alwaysOnTopInterval = null;
+    }
+  });
+
+  startBatteryMonitor((batState) => {
+    safeSend('battery-update', batState);
   });
 
   startBluetoothMonitor((device) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('bluetooth-update', device);
-    }
+    safeSend('bluetooth-update', device);
   });
 
   try {
-    const lockMonitorProcess = spawn(path.join(__dirname, 'scripts', 'lock-monitor.exe'), [], { windowsHide: true });
+    const lockMonitorProcess = spawnTracked(path.join(__dirname, 'scripts', 'lock-monitor.exe'), [], { windowsHide: true });
     lockMonitorProcess.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
       for (const line of lines) {
         const str = line.trim();
         if (str.startsWith('EVENT:')) {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('lock-update', str.substring(6));
-          }
+          safeSend('lock-update', str.substring(6));
         }
       }
     });
 
     // Start Audio Peak Meter
-    const audioMeterProc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'audio-meter.ps1')], { windowsHide: true });
+    const audioMeterProc = spawnTracked('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'audio-meter.ps1')], { windowsHide: true });
     let audioBuffer = '';
     audioMeterProc.stdout.on('data', (data) => {
       audioBuffer += data.toString();
       const lines = audioBuffer.split(/\r?\n/);
-      audioBuffer = lines.pop(); // keep partial line for next chunk
+      audioBuffer = lines.pop();
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('PEAK:')) {
           const val = parseInt(trimmed.substring(5));
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('audio-peak', val);
-          }
+          safeSend('audio-peak', val);
         }
       }
     });
 
     // Start Sys Monitor (Volume & Brightness)
-    const sysMonitorProc = spawn(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [], { windowsHide: true });
+    const sysMonitorProc = spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [], { windowsHide: true });
     let sysBuffer = '';
     sysMonitorProc.stdout.on('data', (data) => {
       sysBuffer += data.toString();
@@ -107,15 +175,17 @@ function createWindow() {
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('VOL|')) {
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sys-vol', parseInt(trimmed.substring(4)));
+          safeSend('sys-vol', parseInt(trimmed.substring(4)));
         } else if (trimmed.startsWith('BRIGHT|')) {
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sys-bright', parseInt(trimmed.substring(7)));
+          safeSend('sys-bright', parseInt(trimmed.substring(7)));
         } else if (trimmed.startsWith('DND|')) {
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sys-dnd', parseInt(trimmed.substring(4)));
+          safeSend('sys-dnd', parseInt(trimmed.substring(4)));
         }
       }
     });
-  } catch(e) {}
+  } catch(e) {
+    console.error('[Child Process Setup Error]', e.message);
+  }
 }
 
 function createTray() {
@@ -123,7 +193,7 @@ function createTray() {
   const icon = nativeImage.createFromDataURL(iconB64);
   tray = new Tray(icon);
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show Notch', click: () => mainWindow.show() },
+    { label: 'Show Notch', click: () => mainWindow && mainWindow.show() },
     { label: 'Open Saved Files', click: () => {
         const fileTrayPath = path.join(app.getPath('userData'), 'file-tray');
         if (!fs.existsSync(fileTrayPath)) {
@@ -132,9 +202,7 @@ function createTray() {
         shell.openPath(fileTrayPath);
     }},
     { label: 'Test AirPods', click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('bluetooth-update', {name: "AirPods", connected: true, battery: 72, type: "earbuds"});
-        }
+        safeSend('bluetooth-update', {name: "AirPods", connected: true, battery: 72, type: "earbuds"});
       }
     },
     { type: 'separator' },
@@ -142,94 +210,118 @@ function createTray() {
   ]);
   tray.setToolTip('Dynamic Notch');
 
-  // Left-click: open file tray in the notch
   tray.on('click', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('open-file-tray');
-    }
+    safeSend('open-file-tray');
   });
 
-  // Right-click: show context menu (don't use setContextMenu — it hijacks left-click on Windows)
   tray.on('right-click', () => {
     tray.popUpContextMenu(contextMenu);
   });
 }
 
-ipcMain.handle('control-media', async (_, action) => await controlMedia(action));
+ipcMain.handle('control-media', async (_, action) => {
+  try {
+    await controlMedia(action);
+  } catch (e) {
+    console.error('[control-media error]', e.message);
+  }
+});
+
 ipcMain.handle('set-sys-val', async (_, type, val) => {
-  const p = spawn(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
+  try {
+    spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
+  } catch (e) {}
   return true;
 });
 
 ipcMain.handle('simulate-win-h', async () => {
-  require('child_process').execFile(path.join(__dirname, 'scripts', 'sys-monitor.exe'), ['winH']);
+  try {
+    require('child_process').execFile(path.join(__dirname, 'scripts', 'sys-monitor.exe'), ['winH']);
+  } catch (e) {}
   return true;
 });
 
-ipcMain.handle('get-bluetooth', async () => await getBluetoothDevices());
-ipcMain.handle('get-recording', async () => await getRecordingStatus());
+ipcMain.handle('get-bluetooth', async () => []);
+ipcMain.handle('get-recording', async () => {
+  try { return await getRecordingStatus(); } catch (e) { return { recording: false }; }
+});
 
 ipcMain.handle('start-speech-recognition', async () => {
   return new Promise((resolve) => {
-    const proc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'speech-recognizer.ps1')], { windowsHide: true });
-    
-    let resultText = '';
-    proc.stdout.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('RESULT:')) {
-        const text = output.split('RESULT:')[1].trim();
-        resultText = text;
-        resolve(text);
-      }
-    });
-    
-    proc.on('close', () => {
-      if (!resultText) resolve('');
-    });
+    try {
+      const proc = spawnTracked('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'speech-recognizer.ps1')], { windowsHide: true });
+      
+      let resultText = '';
+      proc.stdout.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('RESULT:')) {
+          const text = output.split('RESULT:')[1].trim();
+          resultText = text;
+          resolve(text);
+        }
+      });
+      
+      proc.on('close', () => {
+        if (!resultText) resolve('');
+      });
+
+      // Timeout safety — don't hang forever
+      setTimeout(() => { if (!resultText) resolve(''); }, 15000);
+    } catch (e) {
+      resolve('');
+    }
   });
 });
 
 ipcMain.handle('transcribe-audio', async (e, pcmData) => {
   return new Promise((resolve) => {
-    const https = require('https');
-    const url = 'https://www.google.com/speech-api/v2/recognize?client=chromium&lang=en-US&key=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw';
-    const req = https.request(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'audio/l16; rate=16000'
-      }
-    }, (res) => {
-      let resultText = '';
-      res.on('data', chunk => resultText += chunk.toString());
-      res.on('end', () => {
-        try {
-          const lines = resultText.split('\n').filter(l => l.trim().length > 0);
-          const result = JSON.parse(lines[lines.length - 1]);
-          if (result.result && result.result.length > 0 && result.result[0].alternative) {
-            resolve(result.result[0].alternative[0].transcript);
-          } else {
+    try {
+      const https = require('https');
+      const url = 'https://www.google.com/speech-api/v2/recognize?client=chromium&lang=en-US&key=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw';
+      const req = https.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'audio/l16; rate=16000'
+        }
+      }, (res) => {
+        let resultText = '';
+        res.on('data', chunk => resultText += chunk.toString());
+        res.on('end', () => {
+          try {
+            const lines = resultText.split('\n').filter(l => l.trim().length > 0);
+            const result = JSON.parse(lines[lines.length - 1]);
+            if (result.result && result.result.length > 0 && result.result[0].alternative) {
+              resolve(result.result[0].alternative[0].transcript);
+            } else {
+              resolve('');
+            }
+          } catch(err) {
             resolve('');
           }
-        } catch(err) {
-          resolve('');
-        }
+        });
       });
-    });
-    req.on('error', () => resolve(''));
-    req.write(Buffer.from(pcmData));
-    req.end();
+      req.on('error', () => resolve(''));
+      req.write(Buffer.from(pcmData));
+      req.end();
+    } catch (e) {
+      resolve('');
+    }
   });
 });
 
-ipcMain.handle('get-battery', async () => await getBatteryStatus());
-ipcMain.handle('get-calendar', async (_, targetDate) => await googleCalendar.getEvents(targetDate));
+ipcMain.handle('get-battery', async () => {
+  try { return await getBatteryStatus(); } catch (e) { return { hasBattery: false, percent: 100, isCharging: false }; }
+});
+ipcMain.handle('get-calendar', async (_, targetDate) => {
+  try { return await googleCalendar.getEvents(targetDate); } catch (e) { return []; }
+});
 ipcMain.handle('google-calendar-connect', async (e, config) => {
-    googleCalendar.saveConfig({ ...config, connected: true });
+    try { googleCalendar.saveConfig({ ...config, connected: true }); } catch (e) {}
     return { success: true };
 });
 
 ipcMain.handle('open-calendar', () => {
-  require('child_process').exec('start outlookcal:');
+  try { require('child_process').exec('start outlookcal:'); } catch (e) {}
 });
 
 ipcMain.handle('load-profile-image', async () => {
@@ -244,30 +336,37 @@ ipcMain.handle('load-profile-image', async () => {
 });
 
 ipcMain.handle('select-profile-image', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Select Profile Picture',
-    properties: ['openFile'],
-    filters: [{ name: 'Images', extensions: ['jpg', 'png', 'jpeg', 'webp'] }]
-  });
-  if (!result.canceled && result.filePaths.length > 0) {
-    const imagePath = result.filePaths[0];
-    fs.writeFileSync(profileImageStore, JSON.stringify({ imagePath }));
-    return imagePath;
-  }
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Profile Picture',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'png', 'jpeg', 'webp'] }]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      const imagePath = result.filePaths[0];
+      fs.writeFileSync(profileImageStore, JSON.stringify({ imagePath }));
+      return imagePath;
+    }
+  } catch (e) {}
   return null;
 });
 
   ipcMain.on('set-ignore-mouse', (_, ignore) => {
-    if (mainWindow) {
-      mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
-      mainWindow.setFocusable(!ignore);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
+        mainWindow.setFocusable(!ignore);
+      } catch (e) {}
     }
   });
 
   ipcMain.on('focus-window', () => {
-    if (mainWindow) {
-      mainWindow.setFocusable(true);
-      mainWindow.focus();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setFocusable(true);
+        mainWindow.focus();
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch (e) {}
     }
   });
 
@@ -292,24 +391,39 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  ipcMain.handle('get-media', async () => getMediaInfo());
+  ipcMain.handle('get-media', async () => {
+    try { return getMediaInfo(); } catch (e) { return { playing: false }; }
+  });
   
   const weather = require('weather-js');
   ipcMain.handle('fetch-weather', async (_, city) => {
     return new Promise((resolve, reject) => {
-      weather.find({search: city, degreeType: 'F'}, function(err, result) {
-        if(err) resolve(null);
-        else resolve(result[0] || null);
-      });
+      try {
+        weather.find({search: city, degreeType: 'F'}, function(err, result) {
+          if(err) resolve(null);
+          else resolve(result[0] || null);
+        });
+      } catch (e) { resolve(null); }
     });
   });
 
   const { onMediaUpdate } = require('./modules/media');
   onMediaUpdate((data) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('media-update', data);
-    }
+    safeSend('media-update', data);
   });
+});
+
+// ─── Clean shutdown ───
+app.on('before-quit', () => {
+  killAllChildren();
+  try {
+    const { destroyMediaMonitor } = require('./modules/media');
+    if (destroyMediaMonitor) destroyMediaMonitor();
+  } catch (e) {}
+  if (alwaysOnTopInterval) {
+    clearInterval(alwaysOnTopInterval);
+    alwaysOnTopInterval = null;
+  }
 });
 
 app.on('window-all-closed', () => app.quit());
