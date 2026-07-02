@@ -193,6 +193,19 @@ function setupInteractions() {
     expand(); 
   });
 
+  const dashHomeBtn = document.getElementById('dashHomeBtn');
+  if (dashHomeBtn) {
+    dashHomeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      console.log('[App] dashHomeBtn clicked - returning to home view.');
+      forcedPanel = null;
+      currentState = 'idle';
+      notch.setAttribute('data-state', 'idle');
+      decideState();
+      showActivePanel();
+    });
+  }
+
   const dashOpenTrayBtn = document.getElementById('dashOpenTrayBtn');
   if (dashOpenTrayBtn) {
     dashOpenTrayBtn.addEventListener('click', e => {
