@@ -56,12 +56,12 @@ namespace AudioMeter {
         private static Guid IID_IAudioMeterInformation = new Guid("C02216F6-8C67-4B30-9D7A-7199C668F66B");
         private static Guid IID_IAudioSessionManager2 = new Guid("77AA9910-1BD6-484F-8BC7-2C654C9A9B6F");
 
-        public static float GetMaxPeak() {
+        public static float GetMaxPeak(int dataFlow) {
             float max = 0;
             try {
                 var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
                 IntPtr collectionPtr;
-                if (enumerator.EnumAudioEndpoints(0, 1, out collectionPtr) == 0) {
+                if (enumerator.EnumAudioEndpoints(dataFlow, 1, out collectionPtr) == 0) {
                     var collection = (IMMDeviceCollection)Marshal.GetTypedObjectForIUnknown(collectionPtr, typeof(IMMDeviceCollection));
                     uint count; collection.GetCount(out count);
                     for (uint i = 0; i < count; i++) {
@@ -116,11 +116,10 @@ namespace AudioMeter {
 "@
 
 while ($true) {
-    $p = [AudioMeter.PeakTool]::GetMaxPeak()
-    $v = [int]($p * 100)
-    # Apply a boost for the visualizer to be "reactive"
-    if ($v -gt 0 -and $v -lt 20) { $v = [int]($v * 1.5) }
-    if ($v -gt 100) { $v = 100 }
-    Write-Host "PEAK:$v"
-    Start-Sleep -Milliseconds 60
+    Start-Sleep -Milliseconds 50
+    $pRender = [AudioMeter.PeakTool]::GetMaxPeak(0)
+    $pCapture = [AudioMeter.PeakTool]::GetMaxPeak(1)
+    $vRender = [math]::Round($pRender * 100)
+    $vCapture = [math]::Round($pCapture * 100)
+    Write-Host "PEAK:$vRender|MIC_PEAK:$vCapture"
 }

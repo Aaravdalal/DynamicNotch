@@ -7,6 +7,8 @@ const { startBluetoothMonitor } = require('./modules/bluetooth');
 const { getRecordingStatus } = require('./modules/recording');
 const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
 const { initFileTray } = require('./modules/file-tray');
+const { startExternalTimersMonitor } = require('./modules/external-timers');
+const { startDownloadsMonitor } = require('./modules/downloads');
 const { spawn } = require('child_process');
 
 // ─── Global crash prevention ───
@@ -79,7 +81,8 @@ function createWindow() {
       webviewTag: true,
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false
+      webSecurity: false,
+      autoplayPolicy: 'no-user-gesture-required'
     },
   });
 
@@ -89,6 +92,16 @@ function createWindow() {
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.youtube-nocookie.com/embed/*', '*://*.youtube.com/embed/*'] },
+    (details, callback) => {
+      if (details.resourceType === 'subFrame') {
+        details.requestHeaders['Referer'] = 'http://localhost/';
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer] ${message}`);
@@ -137,6 +150,14 @@ function createWindow() {
     safeSend('bluetooth-update', device);
   });
 
+  startExternalTimersMonitor((data) => {
+    safeSend('external-timer-update', data);
+  });
+
+  startDownloadsMonitor((data) => {
+    safeSend('download-update', data);
+  });
+
   try {
     const lockMonitorProcess = spawnTracked(path.join(__dirname, 'scripts', 'lock-monitor.exe'), [], { windowsHide: true });
     lockMonitorProcess.stdout.on('data', (data) => {
@@ -159,8 +180,14 @@ function createWindow() {
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('PEAK:')) {
-          const val = parseInt(trimmed.substring(5));
-          safeSend('audio-peak', val);
+          const parts = trimmed.split('|');
+          for (const p of parts) {
+            if (p.startsWith('PEAK:')) {
+              safeSend('audio-peak', parseInt(p.substring(5)));
+            } else if (p.startsWith('MIC_PEAK:')) {
+              safeSend('mic-peak', parseInt(p.substring(9)));
+            }
+          }
         }
       }
     });
@@ -176,10 +203,16 @@ function createWindow() {
         const trimmed = line.trim();
         if (trimmed.startsWith('VOL|')) {
           safeSend('sys-vol', parseInt(trimmed.substring(4)));
+        } else if (trimmed.startsWith('VOL_FLYOUT|')) {
+          safeSend('sys-vol', parseInt(trimmed.substring(11)));
         } else if (trimmed.startsWith('BRIGHT|')) {
           safeSend('sys-bright', parseInt(trimmed.substring(7)));
         } else if (trimmed.startsWith('DND|')) {
           safeSend('sys-dnd', parseInt(trimmed.substring(4)));
+        } else if (trimmed.startsWith('DEBUG_VOL_CLASS|')) {
+          console.log('[DEBUG_VOL]', trimmed.substring(16));
+        } else if (trimmed.startsWith('ERR|')) {
+          console.log('[SYS_MON_ERR]', trimmed.substring(4));
         }
       }
     });
@@ -229,7 +262,18 @@ ipcMain.handle('control-media', async (_, action) => {
 
 ipcMain.handle('set-sys-val', async (_, type, val) => {
   try {
-    spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
+    if (type === 'toggleRec') {
+      const scriptPath = path.join(__dirname, 'scripts', 'control-recorder.ps1');
+      spawn('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-File', scriptPath, 'Pause'], { windowsHide: true });
+    } else if (type === 'stopRec') {
+      const scriptPath = path.join(__dirname, 'scripts', 'control-recorder.ps1');
+      spawn('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-File', scriptPath, 'Stop'], { windowsHide: true });
+    } else if (type === 'toggleChromeTimer') {
+      const { sendTimerCommand } = require('./modules/external-timers');
+      sendTimerCommand('toggleChrome');
+    } else {
+      spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
+    }
   } catch (e) {}
   return true;
 });

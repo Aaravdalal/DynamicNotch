@@ -19,9 +19,118 @@ let fakePct = 0;
 let visualizerInterval = null;
 let btEqInterval = null;
 let forcedPanel = null; // override for expansion
+let isDragActive = false;
+let isMouseOverNotch = false;
+let ignoreMouseLeave = false;
+
+// Timer state
+let isTimerActive = false;
+let isTimerPaused = false;
+let localTimerTotal = 0;
+let localTimerElapsed = 0;
+let localTimerInterval = null;
 
 const notch = document.getElementById('notch');
 const collapsedView = document.getElementById('collapsedView');
+
+// --- External Timers Sync ---
+let lastExternalSyncTime = 0;
+window.notchAPI.onExternalTimerUpdate((data) => {
+  const now = Date.now();
+  if (data.type === 'chrome' || data.type === 'focus') {
+    if (data.seconds > 0) {
+      if (!isTimerActive) {
+        startTimer(data.seconds);
+      } else {
+        const currentRemaining = localTimerTotal - Math.floor(localTimerElapsed / 1000);
+        if (Math.abs(currentRemaining - data.seconds) > 1 || isTimerPaused !== (data.state === 'PAUSED')) {
+          localTimerTotal = data.seconds;
+          localTimerElapsed = 0;
+          isTimerPaused = (data.state === 'PAUSED');
+          updateTimerUI();
+        }
+      }
+      lastExternalSyncTime = now;
+    }
+  } else if (data.type === 'none_timer') {
+    if (isTimerActive && (now - lastExternalSyncTime > 1500)) {
+      isTimerActive = false;
+      clearInterval(localTimerInterval);
+      decideState();
+    }
+  } else if (data.type === 'mic_active') {
+    const was = recordingData.recording;
+    const wasPaused = recordingData.state === 'PAUSED';
+    
+    if (!was || wasPaused) {
+      recordingData.recording = true;
+      recordingData.state = 'ACTIVE';
+      // If we weren't already recording, reset elapsed time
+      if (!was) {
+        recordingData.elapsed = 0;
+      }
+      recordingData.startTime = Date.now() - (recordingData.elapsed || 0);
+      decideState();
+      
+      if (!recordingData.interval) {
+        recordingData.interval = setInterval(() => {
+          if (!recordingData.recording || recordingData.state === 'PAUSED') return;
+          const elapsed = Date.now() - recordingData.startTime;
+          recordingData.elapsed = elapsed;
+          
+          const ms = elapsed % 1000;
+          const s = Math.floor(elapsed / 1000) % 60;
+          const m = Math.floor(elapsed / 60000) % 60;
+          
+          const mStr = String(m).padStart(2, '0');
+          const sStr = String(s).padStart(2, '0');
+          const msStr = String(Math.floor(ms / 10)).padStart(2, '0');
+          const timeStr = `${mStr}:${sStr}.${msStr}`;
+          
+          recordingData.timeStr = timeStr;
+          document.getElementById('expRecTime').textContent = timeStr;
+          document.getElementById('cRecTime').textContent = timeStr;
+        }, 50);
+      }
+    }
+    
+    const wave = document.getElementById('pillRecWave');
+    if (wave) wave.style.opacity = '1';
+    const pauseBtn = document.getElementById('recPauseBtn');
+    if (pauseBtn) pauseBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
+    
+  } else if (data.type === 'mic_paused') {
+    if (!recordingData.recording) {
+       // if we caught a paused state but weren't recording before, just initialize it
+       recordingData.recording = true;
+       recordingData.elapsed = 0;
+       recordingData.timeStr = "00:00.00";
+    }
+    recordingData.state = 'PAUSED';
+    if (recordingData.interval) {
+      clearInterval(recordingData.interval);
+      recordingData.interval = null;
+    }
+    
+    document.getElementById('expRecTime').textContent = recordingData.timeStr;
+    document.getElementById('cRecTime').textContent = recordingData.timeStr;
+    const wave = document.getElementById('pillRecWave');
+    if (wave) wave.style.opacity = '0.3';
+    const pauseBtn = document.getElementById('recPauseBtn');
+    if (pauseBtn) pauseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+    
+    decideState();
+  } else if (data.type === 'mic_inactive') {
+    if (recordingData.recording) {
+      recordingData.recording = false;
+      if (recordingData.interval) {
+        clearInterval(recordingData.interval);
+        recordingData.interval = null;
+      }
+      decideState();
+    }
+  }
+});
 
 /* ─── Panel map ─── */
 const panelMap = {
@@ -29,6 +138,7 @@ const panelMap = {
   hover:           'panelHoverToggles',
   music:           'panelMusic',
   recording:       'panelRecording',
+  timer:           'panelTimer',
   bluetooth:       'panelBluetooth',
   'bt-connected':  'panelIdle',
   'bt-music':      'panelBtMusic',
@@ -36,7 +146,10 @@ const panelMap = {
   charging:        'panelCharging',
   'low-battery':   'panelLowBattery',
   slider:          'panelSlider',
-  'file-tray':     'panelIdle'
+  'file-tray':     'panelIdle',
+  video:           'panelVideo',
+  download:        'panelDownload',
+  dnd:             'panelDnd'
 };
 
 function hideAllPanels() {
@@ -122,10 +235,11 @@ function handleBluetoothUpdate(device) {
 
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
-  if (currentState === 'file-tray') return; // Don't override file tray while active
+  if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
+  else if (isTimerActive) s = 'timer';
   else if (battToastTimeout) s = 'battery';
   else if (btToastTimeout) s = 'bluetooth';
   else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
@@ -133,6 +247,10 @@ function decideState() {
   else if (mediaData.playing || mediaData.paused) s = 'music';
   
   setState(s);
+
+  if (s === 'recording' || s === 'timer') {
+    if (!isExpanded) expand();
+  }
 
   // Sub-notch visibility
   const sub = document.getElementById('subNotch');
@@ -156,6 +274,7 @@ function expand() {
 
 function collapse() {
   if (!isExpanded) return;
+  if (currentState === 'recording' || currentState === 'timer') return; // Force keep expanded
   isExpanded = false;
   forcedPanel = null; // Reset pin
   if (currentState === 'file-tray') currentState = 'idle';
@@ -172,16 +291,20 @@ let isMicRecording = false;
 /* ─── Interactions ─── */
 function setupInteractions() {
   notch.addEventListener('mouseenter', () => {
+    isMouseOverNotch = true;
     window.notchAPI.setIgnoreMouse(false);
     if (!isExpanded) hoverTimeout = setTimeout(() => {
         expand();
     }, 180);
   });
   notch.addEventListener('mouseleave', () => {
+    isMouseOverNotch = false;
     const searchInput = document.getElementById('dashSearchInput');
     if (searchInput && document.activeElement === searchInput) return;
     if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
-    if (currentState === 'file-tray') return; // Do not collapse when dropping files
+    if (currentState === 'file-tray' && isDragActive) return; // Do not collapse when actively dragging files
+    if (currentState === 'recording') return; // Do not collapse during recording
+    if (ignoreMouseLeave) return; // Ignore collapse during transition cooldown
     if (isExpanded) {
         collapse();
     }
@@ -215,6 +338,17 @@ function setupInteractions() {
         collapse();
         return;
       }
+      
+      // Set cooldown/grace period so shrinking doesn't trigger immediate collapse
+      ignoreMouseLeave = true;
+      isMouseOverNotch = false; // assume mouse will be out, mouseenter will correct this if they stay in
+      setTimeout(() => {
+        ignoreMouseLeave = false;
+        if (!isMouseOverNotch && currentState === 'file-tray' && isExpanded) {
+          collapse();
+        }
+      }, 1500);
+
       currentState = 'file-tray';
       notch.setAttribute('data-state', 'file-tray');
       if (!isExpanded) {
@@ -244,10 +378,60 @@ function setupInteractions() {
 
   const deb = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
+  let isLocalPaused = false;
+  function handleMediaAction(action, e) {
+    if (e) e.stopPropagation();
+    
+    let controlledIframe = false;
+    if (typeof mediaData !== 'undefined' && mediaData && mediaData.source === 'YouTube') {
+      const iframes = ['mainYtIframe', 'dashYtIframe', 'musicYtIframe'];
+      for (let id of iframes) {
+        const iframe = document.getElementById(id);
+        if (iframe && iframe.src && iframe.style.display !== 'none' && iframe.contentWindow) {
+          if (action === 'playpause') {
+            isLocalPaused = !isLocalPaused;
+            const func = isLocalPaused ? 'pauseVideo' : 'playVideo';
+            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: func}), '*');
+          } else if (action === 'next') {
+            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: 'nextVideo'}), '*');
+          } else if (action === 'prev') {
+            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: 'previousVideo'}), '*');
+          }
+          controlledIframe = true;
+          break; // only control the visible one
+        }
+      }
+    }
+    
+    if (!controlledIframe) {
+      // Use system media keys for background Chrome tabs or Spotify
+      window.notchAPI.controlMedia(action);
+      if (action === 'playpause') isLocalPaused = !isLocalPaused;
+    }
+    
+    if (action === 'playpause') {
+      if (typeof mediaData !== 'undefined' && mediaData) mediaData.paused = isLocalPaused;
+      const playSvg = document.querySelector('#playBtn svg');
+      const dashPlayBtnSvg = document.querySelector('#dashPlayBtn svg');
+      const btmuPlaySvg = document.querySelector('#btmuPlayBtn svg');
+      if (isLocalPaused) {
+        if(typeof stopVisualizer === 'function') stopVisualizer();
+        if (playSvg) playSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      } else {
+        if(typeof startVisualizer === 'function') startVisualizer();
+        if (playSvg) playSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      }
+    }
+  }
+
   // Music controls (expanded panel)
-  document.getElementById('prevBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
-  document.getElementById('playBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
-  document.getElementById('nextBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
+  document.getElementById('prevBtn').addEventListener('click', e => handleMediaAction('prev', e));
+  document.getElementById('playBtn').addEventListener('click', e => handleMediaAction('playpause', e));
+  document.getElementById('nextBtn').addEventListener('click', e => handleMediaAction('next', e));
   
   const queueBtn = document.getElementById('queueBtn');
   if (queueBtn) {
@@ -261,10 +445,10 @@ function setupInteractions() {
 
 
 
-  // YouTube Play Button Click
-  const dashArtContainer = document.getElementById('dashArtContainer');
-  if (dashArtContainer) {
-    dashArtContainer.addEventListener('click', (e) => {
+  // YouTube Play Buttons Click
+  const dashYtPlayBtn = document.getElementById('dashYtPlayBtn');
+  if (dashYtPlayBtn) {
+    dashYtPlayBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (mediaData && mediaData.videoId) {
         const iframe = document.getElementById('dashYtIframe');
@@ -272,10 +456,87 @@ function setupInteractions() {
         if (iframe && overlay) {
           overlay.style.display = 'none';
           iframe.style.display = 'block';
-          // Expand the dash art slightly to make it somewhat watchable? Or just 72x72 is fine? Let's just set the src.
-          iframe.src = `https://www.youtube.com/embed/${mediaData.videoId}?autoplay=1`;
+          iframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
         }
       }
+    });
+  }
+
+  const dashYtPipBtn = document.getElementById('dashYtPipBtn');
+  if (dashYtPipBtn) {
+    dashYtPipBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (mediaData && mediaData.videoId) {
+        // Stop in-cover-art playback if active
+        const dashIframe = document.getElementById('dashYtIframe');
+        if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
+        const musicIframe = document.getElementById('musicYtIframe');
+        if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
+        
+        // Open PiP Notch Player
+        forcedPanel = null;
+        notch.classList.remove('forced-full');
+        currentState = 'video';
+        notch.setAttribute('data-state', 'video');
+        showActivePanel();
+        const mainYtIframe = document.getElementById('mainYtIframe');
+        if (mainYtIframe) {
+          mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
+        }
+      }
+    });
+  }
+
+  const musicYtPlayBtn = document.getElementById('musicYtPlayBtn');
+  if (musicYtPlayBtn) {
+    musicYtPlayBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (mediaData && mediaData.videoId) {
+        const iframe = document.getElementById('musicYtIframe');
+        const overlay = document.getElementById('ytMusicPlayOverlay');
+        if (iframe && overlay) {
+          overlay.style.display = 'none';
+          iframe.style.display = 'block';
+          iframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
+        }
+      }
+    });
+  }
+
+  const musicYtPipBtn = document.getElementById('musicYtPipBtn');
+  if (musicYtPipBtn) {
+    musicYtPipBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (mediaData && mediaData.videoId) {
+        // Stop in-cover-art playback if active
+        const dashIframe = document.getElementById('dashYtIframe');
+        if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
+        const musicIframe = document.getElementById('musicYtIframe');
+        if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
+        
+        // Open PiP Notch Player
+        currentState = 'video';
+        notch.setAttribute('data-state', 'video');
+        showActivePanel();
+        const mainYtIframe = document.getElementById('mainYtIframe');
+        if (mainYtIframe) {
+          mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
+        }
+      }
+    });
+  }
+
+  const closeVideoBtn = document.getElementById('closeVideoBtn');
+  if (closeVideoBtn) {
+    closeVideoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const mainYtIframe = document.getElementById('mainYtIframe');
+      if (mainYtIframe) mainYtIframe.src = '';
+      
+      // Return to music panel (or idle depending on if music is playing)
+      currentState = mediaData.playing ? 'music' : 'idle';
+      notch.setAttribute('data-state', currentState);
+      showActivePanel();
     });
   }
 
@@ -294,24 +555,65 @@ function setupInteractions() {
     }
   };
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
-  if(pStar) pStar.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(pStar); });
+  if(pStar) pStar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (mediaData && mediaData.videoId) {
+      // Stop in-cover-art playback if active
+      const dashIframe = document.getElementById('dashYtIframe');
+      if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
+      const musicIframe = document.getElementById('musicYtIframe');
+      if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
+      
+      // Open PiP Notch Player
+      currentState = 'video';
+      notch.setAttribute('data-state', 'video');
+      showActivePanel();
+      const mainYtIframe = document.getElementById('mainYtIframe');
+      if (mainYtIframe) {
+        mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
+      }
+    } else {
+      toggleStar(pStar);
+    }
+  });
+
   const dStar = document.getElementById('dashStarBtn'); // dashMusic star
-  if(dStar) dStar.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(dStar); });
+  if(dStar) dStar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (mediaData && mediaData.videoId) {
+      // Stop in-cover-art playback if active
+      const dashIframe = document.getElementById('dashYtIframe');
+      if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
+      const musicIframe = document.getElementById('musicYtIframe');
+      if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
+      
+      // Open PiP Notch Player
+      currentState = 'video';
+      notch.setAttribute('data-state', 'video');
+      showActivePanel();
+      const mainYtIframe = document.getElementById('mainYtIframe');
+      if (mainYtIframe) {
+        mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
+      }
+    } else {
+      toggleStar(dStar);
+    }
+  });
 
   setupScrubberDrag();
 
   // Combined BT-Music controls
-  document.getElementById('btmuPrevBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
-  document.getElementById('btmuPlayBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
-  document.getElementById('btmuNextBtn').addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
+  document.getElementById('btmuPrevBtn').addEventListener('click', e => handleMediaAction('prev', e));
+  document.getElementById('btmuPlayBtn').addEventListener('click', e => handleMediaAction('playpause', e));
+  document.getElementById('btmuNextBtn').addEventListener('click', e => handleMediaAction('next', e));
 
   // Dashboard music controls
   const dPrev = document.getElementById('dashPrevBtn');
   const dPlay = document.getElementById('dashPlayBtn');
   const dNext = document.getElementById('dashNextBtn');
-  if(dPrev) dPrev.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('prev'); });
-  if(dPlay) dPlay.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('playpause'); });
-  if(dNext) dNext.addEventListener('click', e => { e.stopPropagation(); window.notchAPI.controlMedia('next'); });
+  if(dPrev) dPrev.addEventListener('click', e => handleMediaAction('prev', e));
+  if(dPlay) dPlay.addEventListener('click', e => handleMediaAction('playpause', e));
+  if(dNext) dNext.addEventListener('click', e => handleMediaAction('next', e));
   
   const dashChevronBtn = document.getElementById('dashChevronBtn');
   if (dashChevronBtn) {
@@ -558,6 +860,52 @@ function handleMediaUpdate(data) {
   decideState();
 }
 
+/*  Timer Logic  */
+function startTimer(seconds) {
+  isTimerActive = true;
+  isTimerPaused = false;
+  localTimerTotal = seconds;
+  localTimerElapsed = 0;
+  updateTimerUI();
+  decideState();
+  clearInterval(localTimerInterval);
+  localTimerInterval = setInterval(() => {
+    if (!isTimerPaused) {
+      localTimerElapsed++;
+      if (localTimerElapsed >= localTimerTotal) {
+        isTimerActive = false;
+        clearInterval(localTimerInterval);
+        decideState();
+      } else {
+        updateTimerUI();
+      }
+    }
+  }, 1000);
+  decideState();
+}
+
+function updateTimerUI() {
+  const rem = localTimerTotal - localTimerElapsed;
+  const mm = Math.floor(rem / 60);
+  const ss = (rem % 60).toString().padStart(2, '0');
+  const txt = document.getElementById('timerText');
+  if (txt) txt.textContent = `${mm}:${ss}`;
+  
+  const cTxt = document.getElementById('cTimerTime');
+  if (cTxt) cTxt.textContent = `${mm}:${ss}`;
+
+  const icon = document.getElementById('timerPauseIcon');
+  if (icon) {
+    if (isTimerPaused) {
+      icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    } else {
+      icon.innerHTML = '<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>';
+    }
+  }
+}
+
+window.startTimer = startTimer;
+
 async function fetchCalendar() {
   try {
     const target = new Date();
@@ -647,6 +995,12 @@ function updateMusicUI() {
     }
     animateProgress();
 
+    // Show scrubber for YouTube now that we parse duration correctly
+    const seekBars = document.querySelectorAll('.mu-seek, .dash-seek');
+    seekBars.forEach(bar => {
+      bar.style.display = 'flex';
+    });
+
     if (mediaData.artUrl) {
       coverImg.crossOrigin = 'Anonymous';
       cAlbum.crossOrigin = 'Anonymous';
@@ -660,20 +1014,29 @@ function updateMusicUI() {
       const dashPh = document.getElementById('dashArtPlaceholder');
       const ytPlayOverlay = document.getElementById('ytPlayOverlay');
       const ytIframe = document.getElementById('dashYtIframe');
+      const ytMusicPlayOverlay = document.getElementById('ytMusicPlayOverlay');
+      const musicYtIframe = document.getElementById('musicYtIframe');
       
       if (dashImg) { dashImg.src = mediaData.artUrl; dashImg.style.display = 'block'; }
       if (dashPh) { dashPh.style.display = 'none'; }
       
       if (mediaData.videoId) {
         if (ytPlayOverlay) ytPlayOverlay.style.display = 'flex';
-        // Hide iframe initially if the track changes
+        if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'flex';
+        // Hide iframes initially if the track changes
         if (ytIframe && !ytIframe.src.includes(mediaData.videoId)) {
             ytIframe.style.display = 'none';
             ytIframe.src = '';
         }
+        if (musicYtIframe && !musicYtIframe.src.includes(mediaData.videoId)) {
+            musicYtIframe.style.display = 'none';
+            musicYtIframe.src = '';
+        }
       } else {
         if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
         if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
+        if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'none';
+        if (musicYtIframe) { musicYtIframe.style.display = 'none'; musicYtIframe.src = ''; }
       }
 
       const btmuImg = document.getElementById('btmuCoverImg');
@@ -697,6 +1060,10 @@ function updateMusicUI() {
       const ytIframe = document.getElementById('dashYtIframe');
       if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
       if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
+      const ytMusicPlayOverlay = document.getElementById('ytMusicPlayOverlay');
+      const musicYtIframe = document.getElementById('musicYtIframe');
+      if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'none';
+      if (musicYtIframe) { musicYtIframe.style.display = 'none'; musicYtIframe.src = ''; }
     }
   } else {
     const songTitle = document.getElementById('songTitle');
@@ -766,9 +1133,6 @@ function visualizerLoop() {
   // Use lastKnownPeak, decaying slowly if no update received
   lastKnownPeak *= 0.92; 
   if (lastKnownPeak < 0.1) lastKnownPeak = 0;
-  if (lastKnownPeak < 15 && Math.random() > 0.3) {
-      lastKnownPeak = Math.random() * 80 + 20;
-  }
 
   spans.forEach((s, idx) => {
     const isBig = s.parentElement.classList.contains('equalizer');
@@ -791,6 +1155,51 @@ function visualizerLoop() {
 function updateVisualizerWithPeak(peak) {
   if (peak > lastKnownPeak) lastKnownPeak = peak;
   else lastKnownPeak = (lastKnownPeak * 0.7) + (peak * 0.3);
+}
+
+let lastKnownMicPeak = 0;
+let micVisualizerFrame = null;
+
+function micVisualizerLoop() {
+  const spans = document.querySelectorAll('#pillRecWave span.wb');
+  if (!spans || spans.length === 0) return;
+  
+  if (recordingData.recording && recordingData.state !== 'PAUSED') {
+    const now = Date.now();
+    lastKnownMicPeak *= 0.85; // Faster decay for mic
+    if (lastKnownMicPeak < 0.1) lastKnownMicPeak = 0;
+
+    spans.forEach((s, idx) => {
+      const maxH = 14;
+      const minH = 3;
+      
+      const randomOffset = Math.sin(now / 80 + idx * 3) * 0.5 + 0.5;
+      const barPeak = lastKnownMicPeak * (0.4 + 0.6 * randomOffset);
+      const peakContribution = (barPeak / 100) * (maxH - minH);
+      const targetH = minH + peakContribution;
+      
+      s.style.height = targetH + 'px';
+      s.style.transition = 'height 0.05s linear';
+    });
+  } else {
+    // If not recording or paused, make them flat
+    spans.forEach(s => {
+      s.style.height = '3px';
+      s.style.transition = 'height 0.1s linear';
+    });
+  }
+  
+  micVisualizerFrame = requestAnimationFrame(micVisualizerLoop);
+}
+// Start it immediately, it will idle nicely
+micVisualizerLoop();
+
+function updateMicVisualizerWithPeak(peak) {
+  // Boost mic peak slightly for better visuals
+  let boosted = peak * 1.5;
+  if (boosted > 100) boosted = 100;
+  if (boosted > lastKnownMicPeak) lastKnownMicPeak = boosted;
+  else lastKnownMicPeak = (lastKnownMicPeak * 0.5) + (boosted * 0.5);
 }
 
 let musicDuration = 0;
@@ -1084,26 +1493,51 @@ function showBluetoothToast(device) {
 
 /* ─── Recording ─── */
 async function fetchRecording() {
-  if (isMicRecording) return; // Prevent overwriting local mic state
-  try {
-    const data = await window.notchAPI.getRecording();
-    const was = recordingData.recording;
-    recordingData = data;
-    if (data.recording) {
-      const s = Math.floor(data.elapsed / 1000);
-      const mm = Math.floor(s/60), ss = (s%60).toString().padStart(2,'0');
-      document.getElementById('expRecTime').textContent = `${mm}:${ss}`;
-      document.getElementById('cRecTime').textContent = `${mm}:${ss}`;
-    }
-    if (data.recording !== was) decideState();
-  } catch (e) {}
+  // Handled by external-timers now.
 }
 
 /* ─── Init ─── */
-document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', () => {
   setupInteractions();
   updateClock();
   setInterval(updateClock, 1000);
+  
+  // Hook up Timer buttons
+  const timerPauseBtn = document.getElementById('timerPauseBtn');
+  const timerCancelBtn = document.getElementById('timerCancelBtn');
+  if (timerPauseBtn) {
+    timerPauseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.notchAPI.setSysVal('toggleChromeTimer', 'true');
+      isTimerPaused = !isTimerPaused;
+      updateTimerUI();
+    });
+  }
+  if (timerCancelBtn) {
+    timerCancelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isTimerActive = false;
+      clearInterval(localTimerInterval);
+      decideState();
+    });
+  }
+  
+  // Hook up Recording buttons (Visual & IPC)
+  const recPauseBtn = document.getElementById('recPauseBtn');
+  if (recPauseBtn) {
+    recPauseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.notchAPI.setSysVal('toggleRec', 'true');
+    });
+  }
+  const recStopBtn = document.getElementById('recStopBtn');
+  if (recStopBtn) {
+    recStopBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.notchAPI.setSysVal('stopRec', 'true');
+    });
+  }
+
   fetchCalendar();
   setTimeout(fetchRecording, 2000);
   setInterval(fetchCalendar, 10000);
@@ -1132,6 +1566,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.notchAPI.onAudioPeak((peak) => {
     updateVisualizerWithPeak(peak);
+  });
+  
+  window.notchAPI.onMicPeak((peak) => {
+    updateMicVisualizerWithPeak(peak);
   });
 });
 
@@ -1247,13 +1685,84 @@ function showSlider(val, isBright) {
 if (window.notchAPI.onSysVol) window.notchAPI.onSysVol(v => showSlider(v, false));
 if (window.notchAPI.onSysBright) window.notchAPI.onSysBright(v => showSlider(v, true));
 
+let downloadTimeout = null;
+if (window.notchAPI.onDownloadUpdate) {
+  window.notchAPI.onDownloadUpdate((data) => {
+    const { state, filename } = data;
+    const dlArrow = document.getElementById('dlArrow');
+    const dlCheck = document.getElementById('dlCheck');
+    const dlTitle = document.getElementById('dlTitle');
+    const dlFilename = document.getElementById('dlFilename');
+    
+    if (dlFilename) dlFilename.textContent = filename || '';
+    
+    if (state === 'downloading') {
+      dlTitle.textContent = 'Downloading...';
+      dlTitle.style.color = '#fff';
+      dlArrow.style.display = 'block';
+      dlCheck.style.display = 'none';
+      dlArrow.classList.add('dl-anim-bounce');
+      dlCheck.classList.remove('dl-check-anim');
+      
+      forcedPanel = 'panelDownload';
+      notch.setAttribute('data-state', 'download');
+      expand();
+      showActivePanel();
+      
+      clearTimeout(downloadTimeout);
+    } else if (state === 'complete') {
+      dlTitle.textContent = 'Download Complete';
+      dlTitle.style.color = '#0a84ff';
+      dlCheck.style.stroke = '#0a84ff';
+      dlArrow.style.display = 'none';
+      dlCheck.style.display = 'block';
+      dlArrow.classList.remove('dl-anim-bounce');
+      
+      dlCheck.classList.remove('dl-check-anim');
+      void dlCheck.offsetWidth; // trigger reflow
+      dlCheck.classList.add('dl-check-anim');
+      
+      forcedPanel = 'panelDownload';
+      notch.setAttribute('data-state', 'download');
+      expand();
+      showActivePanel();
+      
+      clearTimeout(downloadTimeout);
+      downloadTimeout = setTimeout(() => {
+        if (forcedPanel === 'panelDownload') {
+          forcedPanel = null;
+          collapse();
+        }
+      }, 3000);
+    }
+  });
+}
+
+
 const dashSearchInput = document.getElementById('dashSearchInput');
 const searchGoogleIcon = document.getElementById('searchGoogleIcon');
 const searchMicBtn = document.getElementById('searchMicBtn');
 
 function executeSearch() {
   if (dashSearchInput && dashSearchInput.value.trim() !== '') {
-    const query = encodeURIComponent(dashSearchInput.value.trim());
+    const val = dashSearchInput.value.trim();
+    
+    // Check for timer command
+    if (val.toLowerCase().startsWith('timer ')) {
+      const match = val.match(/^timer\s+(\d+)\s*(s|m|h)?/i);
+      if (match) {
+        let amt = parseInt(match[1]);
+        const unit = match[2] ? match[2].toLowerCase() : 'm'; // Default to minutes if no unit
+        if (unit === 'm') amt *= 60;
+        else if (unit === 'h') amt *= 3600;
+        startTimer(amt);
+        dashSearchInput.value = '';
+        collapse();
+        return;
+      }
+    }
+    
+    const query = encodeURIComponent(val);
     const url = `https://www.google.com/search?q=${query}`;
     window.notchAPI.openUrl(url);
     dashSearchInput.value = '';
@@ -1392,6 +1901,7 @@ async function renderFileTray() {
 document.addEventListener('dragenter', (e) => {
   e.preventDefault();
   if (e.dataTransfer.types.includes('Files')) {
+    isDragActive = true;
     clearTimeout(dragLeaveTimer);
     if (currentState !== 'file-tray') {
       currentState = 'file-tray';
@@ -1435,14 +1945,20 @@ document.addEventListener('dragleave', (e) => {
   }
   
   dragLeaveTimer = setTimeout(() => {
+    isDragActive = false;
     if (currentState === 'file-tray') {
       collapse();
     }
   }, 300);
 });
 
+document.addEventListener('dragend', () => {
+  isDragActive = false;
+});
+
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
+  isDragActive = false;
   document.getElementById('ftDropzone').classList.remove('drag-over');
   const qsIcon = document.getElementById('quickShareIcon');
   if (qsIcon) {

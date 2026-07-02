@@ -14,15 +14,15 @@ function execAsync(cmd, timeout = 3000) {
 
 async function getRecordingStatus() {
   try {
-    const cmd = `powershell -NoProfile -Command "(Get-Process -Name 'obs64','obs32','OBS','ScreenClip','ScreenSketch','Camtasia','XSplit','Streamlabs OBS' -ErrorAction SilentlyContinue | Select-Object -First 1).ProcessName"`;
-    const proc = await execAsync(cmd, 3000);
+    const cmd = `powershell -NoProfile -Command "$active = $false; $paths = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone', 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged'); foreach ($p in $paths) { if (Test-Path $p) { Get-ChildItem -Path $p | ForEach-Object { $val = Get-ItemProperty -Path $_.PSPath -Name 'LastUsedTimeStop' -ErrorAction SilentlyContinue; if ($val -and $val.LastUsedTimeStop -eq 0) { $active = $true } } } }; if ($active) { Write-Output 'ACTIVE' } else { Write-Output 'INACTIVE' }"`;
+    const output = await execAsync(cmd, 3000);
 
-    if (proc && proc !== '') {
+    if (output === 'ACTIVE') {
       if (!isRecording) {
         isRecording = true;
         recordingStartTime = Date.now();
       }
-      return { recording: true, app: proc, elapsed: Date.now() - recordingStartTime };
+      return { recording: true, app: 'Microphone', elapsed: Date.now() - recordingStartTime };
     } else {
       isRecording = false;
       recordingStartTime = null;

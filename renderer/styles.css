@@ -59,17 +59,43 @@ html, body {
 
 /* Expanded states */
 .notch.expanded{cursor:default}
-.notch.expanded[data-state="video"]{width:560px;height:340px;border-radius:0 0 24px 24px}
-.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1}
-.panel-video{background:#000; width:100%; height:100%; display:none; flex-direction:column; opacity:0; transition:opacity .3s ease; padding: 12px; box-sizing: border-box;}
-.notch.expanded .panel-video iframe{border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);}
+.notch.collapsed[data-state="timer"]{width:110px}
+.notch.expanded[data-state="video"]{width:375px;height:220px;border-radius:0 0 20px 20px}
+.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1;align-items:center;justify-content:center;padding:10px}
+.panel-video{background:#000; width:100%; height:100%; display:none; flex-direction:column; opacity:0; transition:opacity .3s ease; box-sizing: border-box; position: relative;}
+.notch.expanded .panel-video webview, .notch.expanded .panel-video iframe {border-radius: 12px; width: 355px; height: 200px;}
+.panel-video #closeVideoBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: #fff;
+  cursor: pointer;
+}
+.panel-video:hover #closeVideoBtn {
+  opacity: 1;
+}
+.yt-play-btn:hover, .yt-pip-btn:hover {
+  background: rgba(255, 255, 255, 0.4) !important;
+}
 .notch.expanded[data-state="idle"]{width:820px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="file-tray"]{width:560px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="charging"],
 .notch.expanded[data-state="low-battery"]{width:320px;height:52px;border-radius:0 0 22px 22px}
-.notch.expanded[data-state="recording"]{width:300px;height:52px;border-radius:0 0 22px 22px}
+.notch.expanded[data-state="recording"]{width:260px;height:52px;border-radius:0 0 22px 22px}
+.notch.expanded[data-state="timer"]{width:210px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="dnd"]{width:160px;height:52px;border-radius:0 0 22px 22px}
 /* Media player - compact standalone island mode */
 .notch.expanded[data-state="music"]{width:370px;height:140px;border-radius:0 0 32px 32px}
@@ -145,6 +171,7 @@ html, body {
 
 .notch[data-state="music"] .c-time-wrap,
 .notch[data-state="bt-music"] .c-time-wrap,
+.notch[data-state="timer"] .c-time-wrap,
 .notch[data-state="bt-connected"] .c-time-wrap{display:none}
 
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
@@ -156,6 +183,7 @@ html, body {
 
 .c-rec{display:none;align-items:center;gap:5px}
 .notch[data-state="recording"] .c-rec{display:flex}
+.notch[data-state="timer"] .c-timer{display:flex}
 .rec-dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 5px rgba(239,68,68,.5);animation:pulse 1s ease-in-out infinite}
 .c-rec span{font-size:11px;font-weight:600;color:var(--red);font-variant-numeric:tabular-nums}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
@@ -204,14 +232,12 @@ html, body {
   border-radius:inherit;overflow:hidden;
 }
 .notch.expanded .panel{pointer-events:all}
-.notch.expanded[data-state="video"]{width:560px;height:340px;border-radius:0 0 24px 24px}
-.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1}
-.panel-video{background:#000; width:100%; height:100%; display:none; flex-direction:column; opacity:0; transition:opacity .3s ease; padding: 12px; box-sizing: border-box;}
-.notch.expanded .panel-video iframe{border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);}
+/* Video panel rules moved to top */
 .notch.expanded[data-state="idle"] .panel-idle,
 .notch.expanded[data-state="music"] .panel-idle,
 .notch.expanded[data-state="hover"] .panel-hover,
 .notch.expanded[data-state="recording"] #panelRecording,
+.notch.expanded[data-state="timer"] #panelTimer,
 .notch.expanded[data-state="bluetooth"] #panelBluetooth,
 .notch.expanded[data-state="bt-connected"] .panel-idle,
 .notch.expanded[data-state="bt-music"] .panel-btmusic,
@@ -298,6 +324,49 @@ html, body {
   background:#fff;
 }
 
+/* ─── DOWNLOAD PANEL ─── */
+.notch.expanded[data-state="download"]{width:260px;height:64px;border-radius:0 0 24px 24px}
+.notch.expanded[data-state="download"] #panelDownload{display:flex;opacity:1}
+.panel-download{
+  align-items:center;justify-content:flex-start;padding:0 16px;gap:12px;
+}
+.dl-left{
+  display:flex;align-items:center;justify-content:center;
+  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);
+  color:#fff;
+}
+.dl-icon {
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
+.dl-col{
+  display:flex;flex-direction:column;flex:1;overflow:hidden;
+}
+.dl-title{
+  color:#fff;font-size:14px;font-weight:700;margin-bottom:2px;
+}
+.dl-filename{
+  color:rgba(255,255,255,0.6);font-size:12px;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Download Animations */
+@keyframes dl-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+.dl-anim-bounce {
+  animation: dl-bounce 1s infinite ease-in-out;
+}
+.dl-check-anim {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: dl-draw-check 0.4s ease-out forwards;
+}
+@keyframes dl-draw-check {
+  to { stroke-dashoffset: 0; }
+}
+
 /* ═══ DASHBOARD (idle) ═══ */
 .panel-idle{background:var(--bg)}
 .dash{padding:16px 6px 16px 16px;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;color:#fff;
@@ -309,6 +378,17 @@ html, body {
 .dash-header{
   display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;
 }
+/* Quickshare (file-tray) layout overrides */
+.notch[data-state="file-tray"] .dash-header-left {
+  flex: 0 0 200px !important;
+}
+.notch[data-state="file-tray"] #bigTime {
+  margin-left: 90px !important;
+}
+.notch[data-state="file-tray"] #bigDate {
+  margin-left: 70px !important;
+}
+
 .dash-icons {
   display:flex;gap:16px;color:rgba(255,255,255,0.7);
 }
@@ -744,6 +824,10 @@ html, body {
 .notch[data-state=" music\] .dash-widgets, .notch[data-state=\bt-music\] .dash-widgets {
  display: none !important;
 }
+
+/* Timer and Recording UI Styles */
+#recPauseBtn:hover, #timerPauseBtn:hover, #timerCancelBtn:hover { filter: brightness(1.2); }
+#recStopBtn:hover { border-color: rgba(255,255,255,0.6) !important; }
 
 /* Weather Forecast */
 .weather-top-row { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 8px; }

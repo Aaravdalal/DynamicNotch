@@ -89,7 +89,8 @@ class MediaMonitor extends EventEmitter {
             }
             const ytIdx = lowTitle.indexOf(' - youtube');
             if (ytIdx !== -1) {
-                const part = item.title.substring(0, ytIdx);
+                let part = item.title.substring(0, ytIdx);
+                part = part.replace(/^\(\d+\+?\)\s*/, '');
                 detected = { artist: 'YouTube', track: part, source: 'YouTube' };
                 break;
             }
@@ -126,7 +127,7 @@ class MediaMonitor extends EventEmitter {
                 this.lastMediaInfo = {
                     playing: true,
                     paused: false,
-                    artist: detected.artist,
+                    artist: artResult.channelName || detected.artist,
                     track: detected.track,
                     artUrl: artResult.url,
                     duration: artResult.duration,
@@ -161,7 +162,22 @@ class MediaMonitor extends EventEmitter {
                 if (match && match[1]) {
                     const videoId = match[1];
                     const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-                    const artInfo = { url, duration: 0, videoId };
+                    
+                    let durationMs = 0;
+                    const lengthMatch = html.match(/"lengthText":\{[^}]*"simpleText":"([^"]+)"\}/);
+                    if (lengthMatch && lengthMatch[1]) {
+                        const parts = lengthMatch[1].split(':').map(Number);
+                        if (parts.length === 2) durationMs = (parts[0] * 60 + parts[1]) * 1000;
+                        else if (parts.length === 3) durationMs = (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+                    }
+
+                    let channelName = '';
+                    const authorMatch = html.match(/"shortBylineText":\{"runs":\[\{"text":"([^"]+)"/);
+                    if (authorMatch && authorMatch[1]) {
+                        channelName = authorMatch[1];
+                    }
+
+                    const artInfo = { url, duration: durationMs, videoId, channelName };
                     this.cachedArt[query] = artInfo;
                     return artInfo;
                 }
@@ -218,14 +234,21 @@ class MediaMonitor extends EventEmitter {
 
 const monitor = new MediaMonitor();
 
+let mediaPs = null;
+function getMediaPs() {
+    if (!mediaPs) {
+        mediaPs = spawn('powershell', ['-NoProfile', '-Command', '-'], { windowsHide: true });
+        mediaPs.stdin.write(`Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class K{[DllImport("user32.dll")]public static extern void keybd_event(byte b,byte s,uint f,UIntPtr e);}'\n`);
+    }
+    return mediaPs;
+}
+
 async function controlMedia(action) {
     const keyMap = { playpause: 'B3', next: 'B0', prev: 'B1' };
     const vk = keyMap[action];
     if (!vk) return;
-    return new Promise((resolve) => {
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'media-key.ps1');
-        exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -vk "${vk}"`, { windowsHide: true }, () => resolve());
-    });
+    const ps = getMediaPs();
+    ps.stdin.write(`$key=[Convert]::ToByte('${vk}',16); [K]::keybd_event($key, 0, 1, [UIntPtr]::Zero); Start-Sleep -Milliseconds 50; [K]::keybd_event($key, 0, 3, [UIntPtr]::Zero);\n`);
 }
 
 module.exports = { 

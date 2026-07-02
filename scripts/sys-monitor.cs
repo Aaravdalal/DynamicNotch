@@ -11,7 +11,9 @@ namespace SysMonitor
         [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IMMDeviceEnumerator
         {
-            void EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr ppDevices);
+            [PreserveSig]
+            int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr ppDevices);
+            [PreserveSig]
             int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppEndpoint);
         }
 
@@ -19,6 +21,7 @@ namespace SysMonitor
         [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IMMDevice
         {
+            [PreserveSig]
             int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
         }
 
@@ -26,14 +29,23 @@ namespace SysMonitor
         [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IAudioEndpointVolume
         {
-            void RegisterControlChangeNotify(IntPtr pNotify);
-            void UnregisterControlChangeNotify(IntPtr pNotify);
-            void GetChannelCount(out int pnChannelCount);
-            void SetMasterVolumeLevel(float fLevelDB, Guid pguidEventContext);
-            void SetMasterVolumeLevelScalar(float fLevel, Guid pguidEventContext);
+            [PreserveSig]
+            int RegisterControlChangeNotify(IntPtr pNotify);
+            [PreserveSig]
+            int UnregisterControlChangeNotify(IntPtr pNotify);
+            [PreserveSig]
+            int GetChannelCount(out int pnChannelCount);
+            [PreserveSig]
+            int SetMasterVolumeLevel(float fLevelDB, Guid pguidEventContext);
+            [PreserveSig]
+            int SetMasterVolumeLevelScalar(float fLevel, Guid pguidEventContext);
+            [PreserveSig]
             int GetMasterVolumeLevel(out float pfLevelDB);
+            [PreserveSig]
             int GetMasterVolumeLevelScalar(out float pfLevel);
-            void SetMute(bool bMute, Guid pguidEventContext);
+            [PreserveSig]
+            int SetMute(bool bMute, Guid pguidEventContext);
+            [PreserveSig]
             int GetMute(out bool pbMute);
         }
 
@@ -50,6 +62,13 @@ namespace SysMonitor
         [DllImport("ntdll.dll")]
         static extern int NtQueryWnfStateData(ref ulong StateName, int[] TypeId, IntPtr ExplicitScope, out int ChangeStamp, out int Buffer, ref int BufferSize);
 
+        [DllImport("user32.dll")]
+        static extern short GetAsyncKeyState(int vKey);
+
+        const int VK_VOLUME_MUTE = 0xAD;
+        const int VK_VOLUME_DOWN = 0xAE;
+        const int VK_VOLUME_UP = 0xAF;
+
         static int GetVolume()
         {
             try
@@ -58,22 +77,32 @@ namespace SysMonitor
                 var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(enumeratorType);
                 IMMDevice device;
                 enumerator.GetDefaultAudioEndpoint(0, 1, out device);
-                if (device == null) return -1;
+                if (device == null)
+                {
+                    return -1;
+                }
                 
                 var iid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
                 object epvObj;
-                device.Activate(ref iid, 1, IntPtr.Zero, out epvObj);
+                int hr = device.Activate(ref iid, 23, IntPtr.Zero, out epvObj);
+                if (hr != 0) {
+                    Console.WriteLine("DEBUG_VOL|Activate failed with hr: " + hr);
+                    return -1;
+                }
                 var epv = (IAudioEndpointVolume)epvObj;
+                
                 float vol;
                 epv.GetMasterVolumeLevelScalar(out vol);
                 bool isMuted;
                 epv.GetMute(out isMuted);
                 
-                if (isMuted) return 0;
-                return (int)Math.Round(vol * 100);
+                int volLevel = isMuted ? 0 : (int)Math.Round(vol * 100);
+                
+                return volLevel;
             }
-            catch
+            catch (Exception e)
             {
+                Console.WriteLine("DEBUG_VOL|" + e.Message);
                 return -1;
             }
         }
@@ -180,6 +209,13 @@ namespace SysMonitor
                 GetLastInputInfo(ref lastInput);
                 
                 bool isUserActive = (Environment.TickCount - lastInput.dwTime) < 15000;
+
+                if ((GetAsyncKeyState(VK_VOLUME_UP) & 1) != 0 || 
+                    (GetAsyncKeyState(VK_VOLUME_DOWN) & 1) != 0 || 
+                    (GetAsyncKeyState(VK_VOLUME_MUTE) & 1) != 0) 
+                {
+                    Console.WriteLine("VOL_FLYOUT|" + GetVolume());
+                }
 
                 int dnd = GetDndState();
                 if (dnd != -1 && dnd != lastDnd)

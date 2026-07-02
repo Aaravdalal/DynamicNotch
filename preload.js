@@ -24,8 +24,17 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onLockUpdate: (callback) => {
     ipcRenderer.on('lock-update', (event, str) => callback(str));
   },
+  onExternalTimerUpdate: (callback) => {
+    ipcRenderer.on('external-timer-update', (event, data) => callback(data));
+  },
+  onDownloadUpdate: (callback) => {
+    ipcRenderer.on('download-update', (event, data) => callback(data));
+  },
   onAudioPeak: (callback) => {
     ipcRenderer.on('audio-peak', (event, val) => callback(val));
+  },
+  onMicPeak: (callback) => {
+    ipcRenderer.on('mic-peak', (event, val) => callback(val));
   },
   setSysVal: (type, val) => ipcRenderer.invoke('set-sys-val', type, val),
   onSysVol: (callback) => {
