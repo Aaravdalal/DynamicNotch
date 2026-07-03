@@ -127,7 +127,7 @@ html, body {
 .c-batt{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--txt);margin-left:4px}
 .c-batt.low{color:var(--red)}
 .c-batt.charging{color:var(--green)}
-.c-batt.saver{color:#fbbf24}
+.c-batt.saver{color:#ffffff;}
 
 .notch[data-state="music"] .c-song,
 .notch[data-state="music"] .c-album-img,
@@ -821,7 +821,7 @@ html, body {
 .weather-forecast-btn:hover {
   background: rgba(255, 255, 255, 0.25);
 }
-.notch[data-state=" music\] .dash-widgets, .notch[data-state=\bt-music\] .dash-widgets {
+.notch[data-state="music"] .dash-widgets, .notch[data-state="bt-music"] .dash-widgets {
  display: none !important;
 }
 
@@ -855,6 +855,49 @@ html, body {
 .team-score { font-size: 16px; font-weight: 800; color: #fff; }
 .sports-status { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; text-align: center; }
 
+/* --- CALL AND MESSAGING (Apple Style) --- */
+.notch.expanded[data-state="call"]{width:360px;height:72px;border-radius:0 0 36px 36px}
+.notch.expanded[data-state="msg-mini"]{width:340px;height:64px;border-radius:0 0 32px 32px}
+.notch.expanded[data-state="msg-expanded"]{width:380px;height:160px;border-radius:0 0 36px 36px}
 
+.notch.expanded[data-state="call"] #panelCall,
+.notch.expanded[data-state="msg-mini"] #panelMsgMini,
+.notch.expanded[data-state="msg-expanded"] #panelMsgExpanded { display:flex; opacity:1; }
 
+/* Incoming Call */
+.panel-call { width:100%; height:100%; align-items:center; justify-content:center; padding: 0 16px; }
+.call-top { display:flex; align-items:center; width:100%; justify-content:space-between; }
+.call-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+.call-info { display:flex; flex-direction:column; margin-left:12px; flex:1; }
+.call-type { font-size:11px; color:rgba(255,255,255,0.6); font-weight:500; }
+.call-name { font-size:16px; color:#fff; font-weight:700; line-height:1.2; }
+.call-actions { display:flex; gap:12px; }
+.call-btn { width:44px; height:44px; border-radius:50%; border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform 0.2s; }
+.call-btn:hover { transform:scale(1.05); }
+.call-btn.decline { background:#ff3b30; }
+.call-btn.accept { background:#34c759; }
+
+/* Message Mini */
+.panel-msg-mini { width:100%; height:100%; align-items:center; justify-content:space-between; padding:0 16px; cursor:pointer; }
+.msg-mini-left { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
+.msg-avatar-wrapper { position:relative; width:44px; height:44px; flex-shrink:0; }
+.msg-avatar { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.msg-app-icon { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; background:#34c759; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #000; }
+.msg-mini-info { display:flex; flex-direction:column; min-width:0; }
+.msg-name { font-size:14px; font-weight:700; color:#fff; }
+.msg-text { font-size:13px; color:rgba(255,255,255,0.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.msg-mini-right { margin-left:12px; }
+.msg-time { font-size:12px; color:rgba(255,255,255,0.5); }
+
+/* Message Expanded */
+.panel-msg-expanded { width:100%; height:100%; flex-direction:column; padding:16px; }
+.msg-exp-top { display:flex; gap:12px; margin-bottom:12px; }
+.msg-exp-info { display:flex; flex-direction:column; flex:1; }
+.msg-exp-header { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.msg-app-icon-small { width:14px; height:14px; background:#34c759; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.msg-app-icon-small svg { width:8px; height:8px; }
+.msg-exp-text { font-size:13px; color:rgba(255,255,255,0.9); line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.msg-reply-bar { display:flex; align-items:center; width:100%; background:rgba(255,255,255,0.1); border-radius:20px; padding:8px 16px; }
+.msg-reply-input { width:100%; background:transparent; border:none; outline:none; color:#fff; font-size:14px; }
+.msg-reply-input::placeholder { color:rgba(255,255,255,0.5); }
 

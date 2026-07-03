@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { getMediaInfo, controlMedia } = require('./modules/media');
@@ -143,6 +143,7 @@ function createWindow() {
   });
 
   startBatteryMonitor((batState) => {
+    console.log('[DEBUG] Battery State received from monitor:', batState);
     safeSend('battery-update', batState);
   });
 
@@ -227,6 +228,9 @@ function createTray() {
   tray = new Tray(icon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Notch', click: () => mainWindow && mainWindow.show() },
+    { label: 'Login to Google Messages', click: () => hiddenMessages && hiddenMessages.show() },
+    { label: 'Login to Gchat', click: () => hiddenGchat && hiddenGchat.show() },
+    { type: 'separator' },
     { label: 'Open Saved Files', click: () => {
         const fileTrayPath = path.join(app.getPath('userData'), 'file-tray');
         if (!fs.existsSync(fileTrayPath)) {
@@ -414,8 +418,86 @@ ipcMain.handle('select-profile-image', async () => {
     }
   });
 
+
+// ===== HIDDEN WEBVIEWS =====
+let hiddenMessages;
+let hiddenGchat;
+
+function createHiddenWindows() {
+  const { session } = require('electron');
+  
+  const sess = session.fromPartition('persist:messenger');
+  // Clear any existing registered service workers so they fall back to in-page Notification API
+  sess.clearStorageData({
+    storages: ['serviceworkers']
+  });
+
+  // Deny notifications permission to completely block Electron from showing native desktop toasts
+  sess.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'notifications') {
+      return callback(false);
+    }
+    callback(true);
+  });
+
+  const commonOptions = {
+    width: 1000, height: 800,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'webview-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: 'persist:messenger' // Saves login state
+    }
+  };
+
+  hiddenMessages = new BrowserWindow(commonOptions);
+  // Spoof User Agent to avoid Google blocking Electron
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  hiddenMessages.webContents.userAgent = userAgent;
+  // Force the QR code authentication page
+  hiddenMessages.loadURL('https://messages.google.com/web/authentication');
+  
+  hiddenMessages.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[MESSAGES CONSOLE] ${message}`);
+  });
+
+  hiddenMessages.on('close', (e) => {
+    e.preventDefault();
+    hiddenMessages.hide();
+  });
+
+  hiddenGchat = new BrowserWindow(commonOptions);
+  hiddenGchat.webContents.userAgent = userAgent;
+  hiddenGchat.loadURL('https://chat.google.com/');
+  
+  hiddenGchat.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[GCHAT CONSOLE] ${message}`);
+  });
+
+  hiddenGchat.on('close', (e) => {
+    e.preventDefault();
+    hiddenGchat.hide();
+  });
+}
+
+ipcMain.on('hidden-live-message', (event, data) => {
+  safeSend('live-message', data);
+});
+
+ipcMain.on('send-reply', (event, text) => {
+  if (hiddenMessages && !hiddenMessages.isDestroyed()) {
+    hiddenMessages.webContents.send('hidden-send-reply', text);
+  }
+  if (hiddenGchat && !hiddenGchat.isDestroyed()) {
+    hiddenGchat.webContents.send('hidden-send-reply', text);
+  }
+});
+// =============================================
+
 app.whenReady().then(() => {
   initFileTray();
+  createHiddenWindows();
   const { session } = require('electron');
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
     return true;
@@ -434,6 +516,13 @@ app.whenReady().then(() => {
   });
   createWindow();
   createTray();
+
+  globalShortcut.register('CommandOrControl+M', () => {
+    safeSend('mock-message');
+  });
+  globalShortcut.register('CommandOrControl+Shift+C', () => {
+    safeSend('mock-call');
+  });
 
   ipcMain.handle('get-media', async () => {
     try { return getMediaInfo(); } catch (e) { return { playing: false }; }
@@ -459,6 +548,7 @@ app.whenReady().then(() => {
 
 // ─── Clean shutdown ───
 app.on('before-quit', () => {
+  globalShortcut.unregisterAll();
   killAllChildren();
   try {
     const { destroyMediaMonitor } = require('./modules/media');
@@ -471,3 +561,8 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+
+
+
+

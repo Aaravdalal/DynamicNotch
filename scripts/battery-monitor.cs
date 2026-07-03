@@ -56,38 +56,11 @@ class BatteryMonitor
                     lastSaver = status.SystemStatusFlag;
                 }
 
-                bool currentRegistrySaver = false;
-                try
-                {
-                    using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes"))
-                    {
-                        if (key != null)
-                        {
-                            bool isCharging = status.ACLineStatus == 1;
-                            string overlay = isCharging 
-                                ? (string)key.GetValue("ActiveOverlayAcPowerScheme") 
-                                : (string)key.GetValue("ActiveOverlayDcPowerScheme");
-                                
-                            if (overlay == "961cc777-2547-4f9d-8174-7d86181b8a7a" || overlay == "ded574b5-45a0-4f42-8737-46345c09c238")
-                            {
-                                currentRegistrySaver = true;
-                            }
-                        }
-                    }
-                } 
-                catch {}
-
-                if (currentRegistrySaver != lastRegistrySaver)
-                {
-                    changed = true;
-                    lastRegistrySaver = currentRegistrySaver;
-                }
-
                 if (changed)
                 {
                     bool isCharging = status.ACLineStatus == 1;
                     int percent = status.BatteryLifePercent;
-                    bool isSaver = status.SystemStatusFlag == 1 || currentRegistrySaver;
+                    bool isSaver = status.SystemStatusFlag == 1;
                     
                     if (percent > 100) percent = 100;
 

@@ -149,7 +149,10 @@ const panelMap = {
   'file-tray':     'panelIdle',
   video:           'panelVideo',
   download:        'panelDownload',
-  dnd:             'panelDnd'
+  dnd:             'panelDnd',
+  call:            'panelCall',
+  'msg-mini':      'panelMsgMini',
+  'msg-expanded':  'panelMsgExpanded'
 };
 
 function hideAllPanels() {
@@ -236,6 +239,7 @@ function handleBluetoothUpdate(device) {
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
   if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') return; // Protect message states
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
@@ -278,6 +282,7 @@ function collapse() {
   isExpanded = false;
   forcedPanel = null; // Reset pin
   if (currentState === 'file-tray') currentState = 'idle';
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') currentState = 'idle';
   hideAllPanels();
   notch.classList.remove('expanded');
   notch.classList.add('collapsed');
@@ -293,6 +298,22 @@ function setupInteractions() {
   notch.addEventListener('mouseenter', () => {
     isMouseOverNotch = true;
     window.notchAPI.setIgnoreMouse(false);
+    
+    if (window.msgCollapseTimeout) {
+      clearTimeout(window.msgCollapseTimeout);
+      window.msgCollapseTimeout = null;
+    }
+    if (currentState === 'msg-mini') {
+      currentState = 'msg-expanded';
+      notch.setAttribute('data-state', 'msg-expanded');
+      showActivePanel();
+      setTimeout(() => {
+        const replyInput = document.getElementById('msgReplyInput');
+        if (replyInput) replyInput.focus();
+      }, 300);
+      return;
+    }
+
     if (!isExpanded) hoverTimeout = setTimeout(() => {
         expand();
     }, 180);
@@ -2051,3 +2072,110 @@ if (window.notchAPI.onShareInitiated) {
 }
 
 
+
+
+if (panelMsgMini) {
+  panelMsgMini.addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentState = 'msg-expanded';
+    notch.setAttribute('data-state', 'msg-expanded');
+    showActivePanel();
+    document.getElementById('msgReplyInput').focus();
+  });
+}
+
+const callBtnDecline = document.querySelector('.call-btn.decline');
+const callBtnAccept = document.querySelector('.call-btn.accept');
+if (callBtnDecline) {
+  callBtnDecline.addEventListener('click', (e) => {
+    e.stopPropagation();
+    collapse();
+    setTimeout(decideState, 350);
+  });
+}
+if (callBtnAccept) {
+  callBtnAccept.addEventListener('click', (e) => {
+    e.stopPropagation();
+    collapse();
+    setTimeout(decideState, 350);
+  });
+}
+
+if (window.notchAPI && window.notchAPI.onMockMessage) {
+  window.notchAPI.onMockMessage(() => {
+    currentState = 'msg-mini';
+    notch.setAttribute('data-state', 'msg-mini');
+    ignoreMouseLeave = true;
+    setTimeout(() => { ignoreMouseLeave = false; }, 300);
+    if (!isExpanded) expand();
+    else showActivePanel();
+  });
+  window.notchAPI.onMockCall(() => {
+    currentState = 'call';
+    notch.setAttribute('data-state', 'call');
+    ignoreMouseLeave = true;
+    setTimeout(() => { ignoreMouseLeave = false; }, 300);
+    if (!isExpanded) expand();
+    else showActivePanel();
+  });
+}
+
+  if (window.notchAPI && window.notchAPI.onLiveMessage) {
+    window.notchAPI.onLiveMessage((data) => {
+      // Update DOM with real message data
+      const nameEl = document.querySelectorAll('.msg-name');
+      const textEl = document.querySelector('.msg-text');
+      const textExpEl = document.querySelector('.msg-exp-text');
+      const appIcon = document.querySelector('.msg-app-icon');
+      const appIconSmall = document.querySelector('.msg-app-icon-small');
+      
+      if (nameEl) nameEl.forEach(el => el.textContent = data.sender || 'Unknown Sender');
+      if (textEl) textEl.textContent = data.text || 'New message...';
+      if (textExpEl) textExpEl.textContent = data.text || 'New message...';
+      
+      if (appIcon && data.app === 'gchat') {
+        appIcon.style.background = '#00897B'; // Gchat green
+        if (appIconSmall) appIconSmall.style.background = '#00897B';
+      } else if (appIcon) {
+        appIcon.style.background = '#34c759'; // Messages green
+        if (appIconSmall) appIconSmall.style.background = '#34c759';
+      }
+      
+      // Trigger UI
+      currentState = 'msg-mini';
+      notch.setAttribute('data-state', 'msg-mini');
+      ignoreMouseLeave = true;
+      setTimeout(() => { ignoreMouseLeave = false; }, 300);
+      if (!isExpanded) expand();
+      else showActivePanel();
+      
+      // Auto-collapse after 5 seconds if not hovered
+      if (window.msgCollapseTimeout) clearTimeout(window.msgCollapseTimeout);
+      window.msgCollapseTimeout = setTimeout(() => {
+        if (!isMouseOverNotch && currentState === 'msg-mini') {
+          collapse();
+          setTimeout(decideState, 350);
+        }
+      }, 5000);
+    });
+  }
+  
+  // Wire up the reply input box
+  const msgReplyInput = document.getElementById('msgReplyInput');
+  if (msgReplyInput) {
+    msgReplyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && msgReplyInput.value.trim() !== '') {
+        const text = msgReplyInput.value.trim();
+        msgReplyInput.value = ''; // clear
+        
+        // Send to Electron
+        if (window.notchAPI && window.notchAPI.sendReply) {
+          window.notchAPI.sendReply(text);
+        }
+        
+        // Collapse the notch immediately after replying to feel responsive
+        collapse();
+        setTimeout(decideState, 350);
+      }
+    });
+  }

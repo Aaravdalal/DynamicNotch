@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Dynamic Notch Connector",
+  "version": "1.0",
+  "description": "Connects Google Messages and Google Chat to the Dynamic Notch",
+  "permissions": [],
+  "host_permissions": [
+    "https://messages.google.com/*",
+    "https://chat.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://messages.google.com/web/*",
+        "https://chat.google.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}

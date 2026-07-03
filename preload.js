@@ -46,6 +46,16 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onSysDnd: (callback) => {
     ipcRenderer.on('sys-dnd', (event, val) => callback(val));
   },
+    onLiveMessage: (callback) => {
+    ipcRenderer.on('live-message', (event, data) => callback(data));
+  },
+  sendReply: (text) => ipcRenderer.send('send-reply', text),
+  onMockMessage: (callback) => {
+    ipcRenderer.on('mock-message', () => callback());
+  },
+  onMockCall: (callback) => {
+    ipcRenderer.on('mock-call', () => callback());
+  },
   selectProfileImage: () => ipcRenderer.invoke('select-profile-image'),
   loadProfileImage: () => ipcRenderer.invoke('load-profile-image'),
   openCalendar: () => ipcRenderer.invoke('open-calendar'),
@@ -64,4 +74,5 @@ contextBridge.exposeInMainWorld('notchAPI', {
   shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),
   onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths))
 });
+
 
