@@ -16,10 +16,10 @@ function startBatteryMonitor(onChange) {
   
   if (monitorProcess) return;
 
-  const scriptPath = path.join(__dirname, '..', 'scripts', 'battery-monitor.exe');
+  const scriptPath = path.join(__dirname, '..', 'scripts', 'battery-monitor.ps1');
   
   try {
-    monitorProcess = spawn(scriptPath, [], { windowsHide: true });
+    monitorProcess = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
     
     monitorProcess.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
