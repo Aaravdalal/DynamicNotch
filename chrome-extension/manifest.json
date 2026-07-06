@@ -6,7 +6,9 @@
   "permissions": [],
   "host_permissions": [
     "https://messages.google.com/*",
-    "https://chat.google.com/*"
+    "https://chat.google.com/*",
+    "http://127.0.0.1:8080/*",
+    "http://localhost:8080/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -41,38 +41,4 @@ window.addEventListener('message', (event) => {
   }
 });
 
-// Handle incoming replies from the Notch
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'send_reply') {
-    const text = request.text;
-    
-    if (window.location.hostname.includes('messages.google.com')) {
-      // Google Messages uses a textarea
-      const input = document.querySelector('textarea');
-      if (input) {
-        input.value = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        setTimeout(() => {
-          // Press Enter to send
-          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        }, 100);
-      }
-    } else if (window.location.hostname.includes('chat.google.com')) {
-      // Google Chat uses a contenteditable div
-      const input = document.querySelector('div[contenteditable="true"]');
-      if (input) {
-        input.textContent = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        setTimeout(() => {
-          // Press Enter to send
-          const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true });
-          input.dispatchEvent(enterEvent);
-          const enterEventPress = new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true });
-          input.dispatchEvent(enterEventPress);
-        }, 100);
-      }
-    }
-  }
-});
+

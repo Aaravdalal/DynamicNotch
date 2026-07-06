@@ -897,7 +897,184 @@ html, body {
 .msg-app-icon-small { width:14px; height:14px; background:#34c759; border-radius:50%; display:flex; align-items:center; justify-content:center; }
 .msg-app-icon-small svg { width:8px; height:8px; }
 .msg-exp-text { font-size:13px; color:rgba(255,255,255,0.9); line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-.msg-reply-bar { display:flex; align-items:center; width:100%; background:rgba(255,255,255,0.1); border-radius:20px; padding:8px 16px; }
-.msg-reply-input { width:100%; background:transparent; border:none; outline:none; color:#fff; font-size:14px; }
-.msg-reply-input::placeholder { color:rgba(255,255,255,0.5); }
 
+
+
+/* ---------------------------------------
+   Messages (Mini & Expanded)
+   --------------------------------------- */
+.panel-msg-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.msg-mini-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.msg-avatar-wrapper {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
+.msg-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.msg-app-icon {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #000;
+}
+.msg-mini-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.msg-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+.msg-text {
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.msg-mini-right {
+  display: flex;
+  align-items: flex-start;
+  height: 100%;
+  padding-top: 8px;
+}
+.msg-time {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.5);
+}
+
+.panel-msg-expanded {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.msg-exp-top {
+  display: flex;
+  gap: 12px;
+}
+.msg-exp-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.msg-exp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.msg-app-icon-small {
+  width: 14px;
+  height: 14px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.msg-exp-text {
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.9);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg-reply-bar {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(230, 230, 230, 0.95);
+  padding: 8px 12px;
+  border-radius: 28px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.msg-reply-attach {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.msg-reply-attach:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  color: #333;
+}
+.msg-reply-input {
+  flex: 1;
+  height: 36px;
+  background: transparent;
+  border: none;
+  color: #000;
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  font-family: inherit;
+}
+.msg-reply-input::placeholder {
+  color: rgba(0, 0, 0, 0.5);
+}
+.msg-reply-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #007aff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s;
+}
+.msg-reply-send:hover {
+  transform: scale(1.05);
+}
+.msg-reply-send:active {
+  transform: scale(0.95);
+}

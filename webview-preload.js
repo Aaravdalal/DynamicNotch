@@ -1,108 +1,78 @@
-const { ipcRenderer, webFrame } = require('electron');
+const { ipcRenderer } = require('electron');
 
-// 1. Inject script into main world to intercept Notifications and spoof permissions
-webFrame.executeJavaScript(`
-  const OriginalNotification = window.Notification;
-  if (OriginalNotification) {
-    class CustomNotification {
-      constructor(title, options) {
-        try {
-          window.postMessage({
-            type: 'HIDDEN_NOTIFICATION',
-            app: window.location.hostname.includes('messages.google.com') ? 'google-messages' : 'gchat',
-            sender: title,
-            text: options ? options.body : '',
-            icon: options ? options.icon : ''
-          }, '*');
-        } catch(e) {}
-      }
-      static get permission() { return 'granted'; }
-      static requestPermission() { return Promise.resolve('granted'); }
-      close() {}
-    }
-    window.Notification = CustomNotification;
-  }
+// NOTE: We do NOT inject any script tags here because Google Messages
+// enforces Trusted Types CSP which blocks script.textContent assignment.
+//
+// Instead, the Notification interceptor is injected via
+// webContents.executeJavaScript() in main.js, which bypasses CSP entirely.
+//
+// This preload only listens for postMessage events from the injected code
+// and forwards them to the main process via IPC.
 
-  // Spoof navigator.permissions.query for notifications
-  if (navigator.permissions && navigator.permissions.query) {
-    const originalQuery = navigator.permissions.query;
-    navigator.permissions.query = function(descriptor) {
-      if (descriptor && descriptor.name === 'notifications') {
-        const fakeStatus = document.createElement('div');
-        fakeStatus.state = 'granted';
-        fakeStatus.status = 'granted';
-        fakeStatus.onchange = null;
-        return Promise.resolve(fakeStatus);
-      }
-      return originalQuery.call(navigator.permissions, descriptor);
-    };
-  }
-
-  // Spoof visibility so the web app thinks it is always open and focused!
-  // This forces it to use WebSockets and new Notification() instead of background Push ServiceWorkers
-  Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
-  Object.defineProperty(document, 'hidden', { get: () => false });
-  
-  window.addEventListener('blur', (e) => {
-    e.stopImmediatePropagation();
-  }, true);
-
-
-  if (window.ServiceWorkerRegistration && window.ServiceWorkerRegistration.prototype.showNotification) {
-    window.ServiceWorkerRegistration.prototype.showNotification = function(title, options) {
-      try {
-        window.postMessage({
-          type: 'HIDDEN_NOTIFICATION',
-          app: window.location.hostname.includes('messages.google.com') ? 'google-messages' : 'gchat',
-          sender: title,
-          text: options ? options.body : '',
-          icon: options ? options.icon : ''
-        }, '*');
-      } catch(e) {}
-      return Promise.resolve();
-    };
-  }
-
-  // Mock the Service Worker completely so Google Messages doesn't register a real one.
-  // This forces the Window context to call our mock showNotification when a WebSocket message arrives!
-  if (navigator.serviceWorker) {
-    // navigator.serviceWorker mock removed. We will rely on window.Notification mock.
-  }
-`);
-
-// 2. Listen for the intercepted notification from the page
 window.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'HIDDEN_NOTIFICATION') {
-    console.log('[DEBUG] Preload caught notification, forwarding to main...');
+  if (event.source !== window || !event.data) return;
+  if (event.data.type === '__DYNAMIC_NOTCH_MSG__') {
+    const appName = window.location.hostname.includes('messages.google.com')
+      ? 'google-messages'
+      : 'gchat';
+
     ipcRenderer.send('hidden-live-message', {
-      app: event.data.app,
-      sender: event.data.sender,
-      text: event.data.text,
-      icon: event.data.icon
+      app: appName,
+      sender: event.data.title,
+      text: event.data.body,
+      time: 'now',
+      avatar: event.data.icon
     });
   }
 });
 
-// 3. Handle replies from the Notch
 ipcRenderer.on('hidden-send-reply', (event, text) => {
   if (window.location.hostname.includes('messages.google.com')) {
-    const input = document.querySelector('textarea');
-    if (input) {
-      input.value = text;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      setTimeout(() => {
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-      }, 100);
+    
+    // Attempt to select the most recent conversation in the sidebar first
+    const firstConv = document.querySelector('mws-conversation-list-item');
+    if (firstConv) {
+      // Find the clickable element inside it
+      const clickable = firstConv.querySelector('a, button, [role="button"]') || firstConv;
+      clickable.click();
     }
+    
+    setTimeout(() => {
+      const input = document.querySelector('textarea, mws-autosize-textarea');
+      if (input) {
+        input.focus();
+        document.execCommand('insertText', false, text);
+        
+        setTimeout(() => {
+          const sendBtns = Array.from(document.querySelectorAll('button'));
+          const sendBtn = sendBtns.find(b => {
+             const label = (b.getAttribute('aria-label') || '').toLowerCase();
+             return label.includes('send') && !label.includes('schedule');
+          });
+          if (sendBtn) {
+            sendBtn.click();
+          } else {
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+          }
+        }, 150);
+      }
+    }, 400); // Wait 400ms for the conversation view to render after clicking
+    
   } else if (window.location.hostname.includes('chat.google.com')) {
     const input = document.querySelector('div[contenteditable="true"]');
     if (input) {
-      input.textContent = text;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+      document.execCommand('insertText', false, text);
+      
       setTimeout(() => {
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-      }, 100);
+        const sendBtn = document.querySelector('[aria-label="Send message"]');
+        if (sendBtn) {
+          sendBtn.click();
+        } else {
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+        }
+      }, 150);
     }
   }
 });

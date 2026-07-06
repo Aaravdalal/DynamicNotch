@@ -49,9 +49,21 @@ contextBridge.exposeInMainWorld('notchAPI', {
     onLiveMessage: (callback) => {
     ipcRenderer.on('live-message', (event, data) => callback(data));
   },
+  onUnreadCount: (callback) => {
+    ipcRenderer.on('unread-count', (event, count) => callback(count));
+  },
+  onUnreadsList: (callback) => {
+    ipcRenderer.on('unreads-list', (event, list) => callback(list));
+  },
+  onQRUpdate: (callback) => {
+    ipcRenderer.on('qr-update', (event, data) => callback(data));
+  },
   sendReply: (text) => ipcRenderer.send('send-reply', text),
   onMockMessage: (callback) => {
     ipcRenderer.on('mock-message', () => callback());
+  },
+  onMockCall: (callback) => {
+    ipcRenderer.on('mock-call', () => callback());
   },
   onMockCall: (callback) => {
     ipcRenderer.on('mock-call', () => callback());
@@ -72,7 +84,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onOpenFileTray: (callback) => ipcRenderer.on('open-file-tray', callback),
   openQuickShare: () => ipcRenderer.invoke('open-quickshare'),
   shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),
-  onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths))
+  onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths)),
+  openLoginWindow: () => ipcRenderer.send('open-login-window')
 });
-
-

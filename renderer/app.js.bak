@@ -1,0 +1,520 @@
+/* ═══════════════════════════════════════
+   Dynamic Notch — Core Logic (Rebuild)
+   ═══════════════════════════════════════ */
+
+let isExpanded = false;
+let hoverTimeout = null;
+let currentState = 'idle';
+let mediaData = { playing: false };
+let recordingData = { recording: false };
+let batteryData = { percent: 100, isCharging: false };
+let wasCharging = null;
+let showedLowBattery = false;
+let btToastTimeout = null;
+let battToastTimeout = null;
+let btConnectedDevice = null; // persistent BT state
+let calendarOffset = 0;
+let progressInterval = null;
+let fakePct = 0;
+let visualizerInterval = null;
+let btEqInterval = null;
+let forcedPanel = null; // override for expansion
+let isDragActive = false;
+let isMouseOverNotch = false;
+let ignoreMouseLeave = false;
+
+// Timer state
+let isTimerActive = false;
+let isTimerPaused = false;
+let localTimerTotal = 0;
+let localTimerElapsed = 0;
+let localTimerInterval = null;
+
+const notch = document.getElementById('notch');
+const collapsedView = document.getElementById('collapsedView');
+
+// --- External Timers Sync ---
+let lastExternalSyncTime = 0;
+window.notchAPI.onExternalTimerUpdate((data) => {
+  const now = Date.now();
+  if (data.type === 'chrome' || data.type === 'focus') {
+    if (data.seconds > 0) {
+      if (!isTimerActive) {
+        startTimer(data.seconds);
+      } else {
+        const currentRemaining = localTimerTotal - Math.floor(localTimerElapsed / 1000);
+        if (Math.abs(currentRemaining - data.seconds) > 1 || isTimerPaused !== (data.state === 'PAUSED')) {
+          localTimerTotal = data.seconds;
+          localTimerElapsed = 0;
+          isTimerPaused = (data.state === 'PAUSED');
+          updateTimerUI();
+        }
+      }
+      lastExternalSyncTime = now;
+    }
+  } else if (data.type === 'none_timer') {
+    if (isTimerActive && (now - lastExternalSyncTime > 1500)) {
+      isTimerActive = false;
+      clearInterval(localTimerInterval);
+      decideState();
+    }
+  } else if (data.type === 'mic_active') {
+    const was = recordingData.recording;
+    const wasPaused = recordingData.state === 'PAUSED';
+    
+    if (!was || wasPaused) {
+      recordingData.recording = true;
+      recordingData.state = 'ACTIVE';
+      // If we weren't already recording, reset elapsed time
+      if (!was) {
+        recordingData.elapsed = 0;
+      }
+      recordingData.startTime = Date.now() - (recordingData.elapsed || 0);
+      decideState();
+      
+      if (!recordingData.interval) {
+        recordingData.interval = setInterval(() => {
+          if (!recordingData.recording || recordingData.state === 'PAUSED') return;
+          const elapsed = Date.now() - recordingData.startTime;
+          recordingData.elapsed = elapsed;
+          
+          const ms = elapsed % 1000;
+          const s = Math.floor(elapsed / 1000) % 60;
+          const m = Math.floor(elapsed / 60000) % 60;
+          
+          const mStr = String(m).padStart(2, '0');
+          const sStr = String(s).padStart(2, '0');
+          const msStr = String(Math.floor(ms / 10)).padStart(2, '0');
+          const timeStr = `${mStr}:${sStr}.${msStr}`;
+          
+          recordingData.timeStr = timeStr;
+          document.getElementById('expRecTime').textContent = timeStr;
+          document.getElementById('cRecTime').textContent = timeStr;
+        }, 50);
+      }
+    }
+    
+    const wave = document.getElementById('pillRecWave');
+    if (wave) wave.style.opacity = '1';
+    const pauseBtn = document.getElementById('recPauseBtn');
+    if (pauseBtn) pauseBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
+    
+  } else if (data.type === 'mic_paused') {
+    if (!recordingData.recording) {
+       // if we caught a paused state but weren't recording before, just initialize it
+       recordingData.recording = true;
+       recordingData.elapsed = 0;
+       recordingData.timeStr = "00:00.00";
+    }
+    recordingData.state = 'PAUSED';
+    if (recordingData.interval) {
+      clearInterval(recordingData.interval);
+      recordingData.interval = null;
+    }
+    
+    document.getElementById('expRecTime').textContent = recordingData.timeStr;
+    document.getElementById('cRecTime').textContent = recordingData.timeStr;
+    const wave = document.getElementById('pillRecWave');
+    if (wave) wave.style.opacity = '0.3';
+    const pauseBtn = document.getElementById('recPauseBtn');
+    if (pauseBtn) pauseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+    
+    decideState();
+  } else if (data.type === 'mic_inactive') {
+    if (recordingData.recording) {
+      recordingData.recording = false;
+      if (recordingData.interval) {
+        clearInterval(recordingData.interval);
+        recordingData.interval = null;
+      }
+      decideState();
+    }
+  }
+});
+
+/* ─── Panel map ─── */
+const panelMap = {
+  idle:            'panelIdle',
+  hover:           'panelHoverToggles',
+  music:           'panelMusic',
+  recording:       'panelRecording',
+  timer:           'panelTimer',
+  bluetooth:       'panelBluetooth',
+  'bt-connected':  'panelIdle',
+  'bt-music':      'panelBtMusic',
+  unlock:          'panelUnlock',
+  charging:        'panelCharging',
+  'low-battery':   'panelLowBattery',
+  slider:          'panelSlider',
+  'file-tray':     'panelIdle',
+  video:           'panelVideo',
+  download:        'panelDownload',
+  dnd:             'panelDnd',
+  call:            'panelCall',
+  'msg-mini':      'panelMsgMini',
+  'msg-expanded':  'panelMsgExpanded'
+};
+
+function hideAllPanels() {
+  Object.values(panelMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.style.opacity = '0'; }
+  });
+}
+
+function showActivePanel() {
+  const activeId = forcedPanel || panelMap[currentState];
+  Object.values(panelMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (id === activeId) {
+        if (el.style.display !== 'flex') {
+          el.style.display = 'flex';
+        }
+        el.style.opacity = '1';
+      } else {
+        el.style.display = 'none';
+        el.style.opacity = '0';
+      }
+    }
+  });
+  
+  // Also handle forcedPanel if it's not in panelMap (like panelDnd)
+  if (forcedPanel && !Object.values(panelMap).includes(forcedPanel)) {
+    const forcedEl = document.getElementById(forcedPanel);
+    if (forcedEl) {
+      if (forcedEl.style.display !== 'flex') forcedEl.style.display = 'flex';
+      forcedEl.style.opacity = '1';
+    }
+  }
+
+  // Handle inner content of panelIdle (Dashboard Main vs File Tray)
+  const dashMain = document.getElementById('dashMainContent');
+  const dashFileTray = document.getElementById('dashFileTrayContent');
+  if (dashMain && dashFileTray) {
+    if (currentState === 'file-tray') {
+      dashMain.style.display = 'none';
+      dashFileTray.style.display = 'flex';
+    } else {
+      dashMain.style.display = 'flex';
+      dashFileTray.style.display = 'none';
+    }
+  }
+}
+
+function setState(s) {
+  console.log('[App] Setting State:', s);
+  currentState = s;
+  notch.dataset.state = s;
+  if (isExpanded) showActivePanel(); else hideAllPanels();
+}
+
+function handleBluetoothUpdate(device) {
+  if (device.connected) {
+    btConnectedDevice = device;
+    
+    // Update collapsed bar battery if present
+    const battSpan = document.getElementById('cNoteBattery');
+    if (battSpan) {
+        if (device.battery > -1) {
+            battSpan.textContent = device.battery + '%';
+            battSpan.style.display = 'inline-block';
+            battSpan.classList.toggle('low', device.battery <= 20);
+        } else {
+            battSpan.style.display = 'none';
+        }
+    }
+
+    if (!btToastTimeout) {
+        showBluetoothToast(device);
+    }
+  } else {
+    btConnectedDevice = null;
+    const battSpan = document.getElementById('cNoteBattery');
+    if (battSpan) battSpan.style.display = 'none';
+    decideState();
+  }
+}
+
+function decideState() {
+  if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
+  if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') return; // Protect message states
+
+  let s = 'idle';
+  if (recordingData.recording) s = 'recording';
+  else if (isTimerActive) s = 'timer';
+  else if (battToastTimeout) s = 'battery';
+  else if (btToastTimeout) s = 'bluetooth';
+  else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
+  else if (btConnectedDevice) s = 'bt-connected';
+  else if (mediaData.playing || mediaData.paused) s = 'music';
+  
+  setState(s);
+
+  if (s === 'recording' || s === 'timer') {
+    if (!isExpanded) expand();
+  }
+
+  // Sub-notch visibility
+  const sub = document.getElementById('subNotch');
+  if (sub) {
+    const shouldShow = (currentState === 'music' || currentState === 'bt-music') && !isExpanded;
+    if (shouldShow) sub.classList.add('visible');
+    else sub.classList.remove('visible');
+  }
+}
+/* ─── Expand / Collapse ─── */
+function expand() {
+  if (isExpanded) return;
+  isExpanded = true;
+  notch.classList.remove('collapsed');
+  notch.classList.add('expanded');
+  showActivePanel();
+  window.notchAPI.setIgnoreMouse(false);
+  decideState(); // Refresh sub-notch etc.
+}
+
+function collapse() {
+  if (!isExpanded) return;
+  if (currentState === 'recording' || currentState === 'timer') return; // Force keep expanded
+  isExpanded = false;
+  forcedPanel = null; // Reset pin
+  if (currentState === 'file-tray') currentState = 'idle';
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') currentState = 'idle';
+  hideAllPanels();
+  notch.style.height = ''; // Clear inline dynamic height
+  notch.classList.remove('expanded');
+  notch.classList.add('collapsed');
+  notch.classList.remove('forced-full'); // Remove forced size
+  window.notchAPI.setIgnoreMouse(true);
+  decideState(); // Refresh sub-notch
+}
+
+if (panelMsgMini) {
+  panelMsgMini.addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentState = 'msg-expanded';
+    notch.setAttribute('data-state', 'msg-expanded');
+    showActivePanel();
+    document.getElementById('msgReplyInput').focus();
+  });
+}
+
+const callBtnDecline = document.querySelector('.call-btn.decline');
+const callBtnAccept = document.querySelector('.call-btn.accept');
+if (callBtnDecline) {
+  callBtnDecline.addEventListener('click', (e) => {
+    e.stopPropagation();
+    collapse();
+    setTimeout(decideState, 350);
+  });
+}
+if (callBtnAccept) {
+  callBtnAccept.addEventListener('click', (e) => {
+    e.stopPropagation();
+    collapse();
+    setTimeout(decideState, 350);
+  });
+}
+
+if (window.notchAPI && window.notchAPI.onMockMessage) {
+  window.notchAPI.onMockMessage(() => {
+    currentState = 'msg-mini';
+    notch.setAttribute('data-state', 'msg-mini');
+    ignoreMouseLeave = true;
+    setTimeout(() => { ignoreMouseLeave = false; }, 300);
+    if (!isExpanded) expand();
+    else showActivePanel();
+  });
+  window.notchAPI.onMockCall(() => {
+    currentState = 'call';
+    notch.setAttribute('data-state', 'call');
+    ignoreMouseLeave = true;
+    setTimeout(() => { ignoreMouseLeave = false; }, 300);
+    if (!isExpanded) expand();
+    else showActivePanel();
+  });
+}
+
+  if (window.notchAPI && window.notchAPI.onLiveMessage) {
+    window.notchAPI.onLiveMessage((data) => {
+      // Update DOM with real message data
+      const nameEl = document.querySelectorAll('.msg-name');
+      const textEl = document.querySelector('.msg-text');
+      const textExpEl = document.querySelector('.msg-exp-text');
+      const appIcon = document.querySelector('.msg-app-icon');
+      const appIconSmall = document.querySelector('.msg-app-icon-small');
+      
+      if (nameEl) nameEl.forEach(el => el.textContent = data.sender || 'Unknown Sender');
+      if (textEl) textEl.textContent = data.text || 'New message...';
+      if (textExpEl) textExpEl.textContent = data.text || 'New message...';
+      
+      const avatarEls = document.querySelectorAll('.msg-avatar');
+      if (avatarEls && data.avatar) {
+        avatarEls.forEach(el => el.src = data.avatar);
+      }
+      
+      if (appIcon && data.app === 'gchat') {
+        appIcon.style.background = '#00897B'; // Gchat green
+        if (appIconSmall) appIconSmall.style.background = '#00897B';
+      } else if (appIcon) {
+        appIcon.style.background = '#34c759'; // Messages green
+        if (appIconSmall) appIconSmall.style.background = '#34c759';
+      }
+      
+      // Trigger UI
+      currentState = 'msg-mini';
+      notch.setAttribute('data-state', 'msg-mini');
+      ignoreMouseLeave = true;
+      setTimeout(() => { ignoreMouseLeave = false; }, 300);
+      if (!isExpanded) expand();
+      else showActivePanel();
+      
+      // Auto-collapse after 5 seconds if not hovered
+      if (window.msgCollapseTimeout) clearTimeout(window.msgCollapseTimeout);
+      window.msgCollapseTimeout = setTimeout(() => {
+        if (!isMouseOverNotch && currentState === 'msg-mini') {
+          collapse();
+          setTimeout(decideState, 350);
+        }
+      }, 5000);
+    });
+  }
+
+  if (window.notchAPI && window.notchAPI.onUnreadCount) {
+    window.notchAPI.onUnreadCount((count) => {
+      const badge = document.getElementById('cUnreadBadge');
+      if (badge) {
+        if (count > 0) {
+          badge.textContent = count;
+          badge.style.display = 'block';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  if (window.notchAPI && window.notchAPI.onUnreadsList) {
+    window.notchAPI.onUnreadsList((list) => {
+      const container = document.getElementById('unreadsListContainer');
+      const emptyState = document.getElementById('unreadsEmptyState');
+      if (container && emptyState) {
+        container.innerHTML = '';
+        if (list && list.length > 0) {
+          emptyState.style.display = 'none';
+          container.style.display = 'flex';
+          
+          list.forEach(item => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'unread-message-item';
+            itemEl.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; background: rgba(255,255,255,0.04); cursor: pointer; transition: background 0.2s, transform 0.2s;';
+            itemEl.addEventListener('mouseenter', () => { 
+              itemEl.style.background = 'rgba(255,255,255,0.08)'; 
+              itemEl.style.transform = 'translateY(-1px)';
+            });
+            itemEl.addEventListener('mouseleave', () => { 
+              itemEl.style.background = 'rgba(255,255,255,0.04)'; 
+              itemEl.style.transform = 'translateY(0)';
+            });
+            
+            itemEl.addEventListener('click', () => {
+              if (window.notchAPI && window.notchAPI.focusWindow) {
+                // Focus the Google Messages window on click so the user can reply
+                window.notchAPI.focusWindow();
+              }
+            });
+
+            // Avatar
+            const avatarContainer = document.createElement('div');
+            avatarContainer.style.cssText = 'width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden;';
+            
+            if (item.avatar) {
+              const img = document.createElement('img');
+              img.src = item.avatar;
+              img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+              avatarContainer.appendChild(img);
+            } else {
+              const initial = item.sender ? item.sender.charAt(0).toUpperCase() : '?';
+              avatarContainer.textContent = initial;
+              const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+              const colorIdx = initial.charCodeAt(0) % colors.length;
+              avatarContainer.style.backgroundColor = colors[colorIdx];
+            }
+            
+            // Text
+            const textWrap = document.createElement('div');
+            textWrap.style.cssText = 'flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center;';
+            
+            const senderEl = document.createElement('div');
+            senderEl.style.cssText = 'font-size: 11px; font-weight: 700; color: #fff; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+            senderEl.textContent = item.sender;
+            
+            const msgEl = document.createElement('div');
+            msgEl.style.cssText = 'font-size: 10px; color: rgba(255,255,255,0.6); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;';
+            msgEl.textContent = item.text;
+            
+            textWrap.appendChild(senderEl);
+            textWrap.appendChild(msgEl);
+            
+            itemEl.appendChild(avatarContainer);
+            itemEl.appendChild(textWrap);
+            container.appendChild(itemEl);
+          });
+        } else {
+          emptyState.style.display = 'block';
+          container.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  if (window.notchAPI && window.notchAPI.onQRUpdate) {
+    window.notchAPI.onQRUpdate((status) => {
+      const loginContainer = document.getElementById('dashLoginContainer');
+      const unreadsContainer = document.getElementById('unreadsListContainer');
+      const emptyState = document.getElementById('unreadsEmptyState');
+      
+      if (status === 'needs-login') {
+        if (loginContainer) loginContainer.style.display = 'block';
+        if (unreadsContainer) unreadsContainer.style.display = 'none';
+        if (emptyState) emptyState.style.display = 'none';
+      } else {
+        if (loginContainer) loginContainer.style.display = 'none';
+        setTimeout(decideState, 350);
+      }
+    });
+  }
+
+  // Wire up the new iMessage-style Quick Reply bar
+  const msgReplyInput = document.getElementById('msgReplyInput');
+  const msgReplySendBtn = document.getElementById('msgReplySendBtn');
+
+  const executeSendReply = () => {
+    if (msgReplyInput && msgReplyInput.value.trim() !== '') {
+      const text = msgReplyInput.value.trim();
+      msgReplyInput.value = ''; // clear
+      
+      // Send to Electron
+      if (window.notchAPI && window.notchAPI.sendReply) {
+        window.notchAPI.sendReply(text);
+      }
+      
+      // Collapse the notch immediately after replying to feel responsive
+      collapse();
+      setTimeout(decideState, 350);
+    }
+  };
+
+  if (msgReplyInput) {
+    msgReplyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        executeSendReply();
+      }
+    });
+  }
+  
+  if (msgReplySendBtn) {
+    msgReplySendBtn.addEventListener('click', executeSendReply);
+  }

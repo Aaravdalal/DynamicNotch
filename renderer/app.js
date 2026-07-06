@@ -158,7 +158,14 @@ const panelMap = {
 function hideAllPanels() {
   Object.values(panelMap).forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.style.display = 'none'; el.style.opacity = '0'; }
+    if (el) { 
+      el.style.opacity = '0';
+      setTimeout(() => {
+        if (el.style.opacity === '0') {
+          el.style.display = 'none';
+        }
+      }, 200);
+    }
   });
 }
 
@@ -172,12 +179,27 @@ function showActivePanel() {
           el.style.display = 'flex';
         }
         el.style.opacity = '1';
+        
+        // Dynamically adjust height for message expansion
+        if (activeId === 'panelMsgExpanded') {
+          requestAnimationFrame(() => {
+            notch.style.height = Math.max(140, el.scrollHeight + 16) + 'px';
+          });
+        }
       } else {
-        el.style.display = 'none';
         el.style.opacity = '0';
+        setTimeout(() => {
+          if (el.style.opacity === '0') {
+            el.style.display = 'none';
+          }
+        }, 200);
       }
     }
   });
+  
+  if (activeId !== 'panelMsgExpanded') {
+    notch.style.height = '';
+  }
   
   // Also handle forcedPanel if it's not in panelMap (like panelDnd)
   if (forcedPanel && !Object.values(panelMap).includes(forcedPanel)) {
@@ -2128,6 +2150,10 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
       const textExpEl = document.querySelector('.msg-exp-text');
       const appIcon = document.querySelector('.msg-app-icon');
       const appIconSmall = document.querySelector('.msg-app-icon-small');
+      const avatarEls = document.querySelectorAll('.msg-avatar');
+      if (avatarEls && data.avatar) {
+        avatarEls.forEach(el => el.src = data.avatar);
+      }
       
       if (nameEl) nameEl.forEach(el => el.textContent = data.sender || 'Unknown Sender');
       if (textEl) textEl.textContent = data.text || 'New message...';
@@ -2158,6 +2184,29 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
         }
       }, 5000);
     });
+
+    const replyInput = document.getElementById('msgReplyInput');
+    const replyBtn = document.getElementById('msgReplySendBtn');
+    
+    function handleSendReply() {
+      if (replyInput && replyInput.value.trim() !== '') {
+        if (window.notchAPI && window.notchAPI.sendReply) {
+          window.notchAPI.sendReply(replyInput.value.trim());
+        }
+        replyInput.value = '';
+        collapse();
+        setTimeout(decideState, 350);
+      }
+    }
+
+    if (replyInput) {
+      replyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleSendReply();
+      });
+    }
+    if (replyBtn) {
+      replyBtn.addEventListener('click', handleSendReply);
+    }
   }
   
   // Wire up the reply input box

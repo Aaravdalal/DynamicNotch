@@ -1,4 +1,8 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog, shell, globalShortcut } = require('electron');
+
+// Disable hardware acceleration to prevent GPU crashes on Windows power-saver mode (fixes blank QR codes)
+app.disableHardwareAcceleration();
+
 const path = require('path');
 const fs = require('fs');
 const { getMediaInfo, controlMedia } = require('./modules/media');
@@ -217,6 +221,76 @@ function createWindow() {
         }
       }
     });
+
+    // Python Message Interceptor removed
+
+    // --- NEW: Local Notification API Server ---
+    try {
+      const http = require('http');
+      const server = http.createServer((req, res) => {
+        // Set CORS headers
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204);
+          return res.end();
+        }
+
+        if (req.method === 'POST' && req.url === '/notify') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const payload = JSON.parse(body);
+              if (payload.sender || payload.text) {
+                console.log(`[LocalAPI] New Message from ${payload.sender}: ${payload.text}`);
+                safeSend('live-message', {
+                  app: payload.app || 'messages',
+                  sender: payload.sender || 'Unknown',
+                  text: payload.text || '',
+                  time: payload.time || 'now'
+                });
+              }
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true }));
+            } catch (e) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+          });
+        } else if (req.method === 'POST' && req.url === '/unreads') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const payload = JSON.parse(body);
+              if (Array.isArray(payload.list)) {
+                safeSend('unreads-list', payload.list);
+                safeSend('unread-count', payload.list.length);
+              }
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true }));
+            } catch (e) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+          });
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      });
+
+      server.listen(8080, '0.0.0.0', () => {
+        console.log('[LocalAPI] Listening for notifications on port 8080 (0.0.0.0)');
+      });
+    } catch(e) {
+      console.error('[LocalAPI Error]', e.message);
+    }
+    // ----------------------------------------
+
   } catch(e) {
     console.error('[Child Process Setup Error]', e.message);
   }
@@ -425,67 +499,134 @@ let hiddenGchat;
 
 function createHiddenWindows() {
   const { session } = require('electron');
-  
   const sess = session.fromPartition('persist:messenger');
-  // Clear any existing registered service workers so they fall back to in-page Notification API
-  sess.clearStorageData({
-    storages: ['serviceworkers']
-  });
 
-  // Deny notifications permission to completely block Electron from showing native desktop toasts
+  // Grant ALL permissions — the Notification interceptor in webview-preload.js
+  // catches messages before they become native toasts.
   sess.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'notifications') {
-      return callback(false);
-    }
     callback(true);
   });
+  sess.setPermissionCheckHandler(() => true);
+
+  // Use a real Chrome user agent — Electron's default UA contains "Electron/28"
+  // which causes Google to block or throttle features like the QR code canvas.
+  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.291 Safari/537.36';
 
   const commonOptions = {
     width: 1000, height: 800,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'webview-preload.js'),
-      contextIsolation: true,
       nodeIntegration: false,
-      partition: 'persist:messenger' // Saves login state
+      contextIsolation: false,       // Needed so preload can inject script tags into page
+      backgroundThrottling: false,
+      partition: 'persist:messenger'
     }
   };
 
+  // --- Google Messages ---
   hiddenMessages = new BrowserWindow(commonOptions);
-  // Spoof User Agent to avoid Google blocking Electron
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-  hiddenMessages.webContents.userAgent = userAgent;
-  // Force the QR code authentication page
-  hiddenMessages.loadURL('https://messages.google.com/web/authentication');
-  
-  hiddenMessages.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[MESSAGES CONSOLE] ${message}`);
+  hiddenMessages.webContents.setUserAgent(chromeUA);
+
+  hiddenMessages.webContents.on('did-finish-load', () => {
+    const url = hiddenMessages.webContents.getURL();
+    console.log('[Messages] Page loaded:', url);
+
+    // Inject the Notification interceptor via executeJavaScript().
+    // This bypasses Google's Trusted Types CSP that blocks script.textContent.
+    hiddenMessages.webContents.executeJavaScript(`
+      (function() {
+        if (window.__dynamicNotchInstalled) return;
+        window.__dynamicNotchInstalled = true;
+
+        const OriginalNotification = window.Notification;
+        if (!OriginalNotification) return;
+
+        function getBase64Image(url, callback) {
+          if (!url) return callback('');
+          let done = false;
+          const finish = (res) => {
+            if (done) return;
+            done = true;
+            callback(res);
+          };
+          setTimeout(() => finish(''), 500); // 500ms fallback so notifications never get stuck
+          
+          const img = new Image();
+          img.crossOrigin = 'Anonymous';
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            try {
+              finish(canvas.toDataURL('image/png'));
+            } catch(e) { finish(url); }
+          };
+          img.onerror = function() { finish(url); };
+          img.src = url;
+        }
+
+        class InterceptedNotification extends OriginalNotification {
+          constructor(title, options) {
+            super(title, options);
+            try {
+              getBase64Image(options ? options.icon : '', (base64Icon) => {
+                window.postMessage({
+                  type: '__DYNAMIC_NOTCH_MSG__',
+                  title: title,
+                  body: options ? options.body : '',
+                  icon: base64Icon
+                }, '*');
+              });
+            } catch(e) {}
+          }
+        }
+
+        InterceptedNotification.requestPermission = function(cb) {
+          if (cb) cb('granted');
+          return Promise.resolve('granted');
+        };
+        Object.defineProperty(InterceptedNotification, 'permission', {
+          get() { return 'granted'; },
+          configurable: true
+        });
+
+        window.Notification = InterceptedNotification;
+        console.log('[DynamicNotch] Notification interceptor installed with avatar support.');
+      })();
+    `).catch(err => console.error('[Messages] Failed to inject interceptor:', err));
   });
 
+  hiddenMessages.webContents.on('did-fail-load', (event, code, desc, url) => {
+    console.error('[Messages] Load failed:', url, code, desc);
+  });
+
+  hiddenMessages.loadURL('https://messages.google.com/web/authentication');
   hiddenMessages.on('close', (e) => {
     e.preventDefault();
     hiddenMessages.hide();
   });
 
+  // --- Google Chat ---
   hiddenGchat = new BrowserWindow(commonOptions);
-  hiddenGchat.webContents.userAgent = userAgent;
+  hiddenGchat.webContents.setUserAgent(chromeUA);
   hiddenGchat.loadURL('https://chat.google.com/');
-  
-  hiddenGchat.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[GCHAT CONSOLE] ${message}`);
-  });
-
   hiddenGchat.on('close', (e) => {
     e.preventDefault();
     hiddenGchat.hide();
   });
+
 }
 
 ipcMain.on('hidden-live-message', (event, data) => {
+  console.log('[HiddenMessage] Intercepted from', data.app, data.sender);
   safeSend('live-message', data);
 });
 
 ipcMain.on('send-reply', (event, text) => {
+  console.log('[HiddenMessage] Sending reply:', text);
   if (hiddenMessages && !hiddenMessages.isDestroyed()) {
     hiddenMessages.webContents.send('hidden-send-reply', text);
   }
@@ -543,6 +684,23 @@ app.whenReady().then(() => {
   const { onMediaUpdate } = require('./modules/media');
   onMediaUpdate((data) => {
     safeSend('media-update', data);
+  });
+  
+  ipcMain.on('open-login-window', () => {
+    if (hiddenMessages) {
+      hiddenMessages.setOpacity(1);
+      hiddenMessages.show();
+      hiddenMessages.setSkipTaskbar(false);
+      hiddenMessages.focus();
+      
+      hiddenMessages.removeAllListeners('close');
+      hiddenMessages.on('close', (e) => {
+        e.preventDefault();
+        hiddenMessages.hide();
+        hiddenMessages.setSkipTaskbar(true);
+        hiddenMessages.setOpacity(0);
+      });
+    }
   });
 });
 
