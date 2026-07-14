@@ -127,7 +127,6 @@ html, body {
 .c-batt{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--txt);margin-left:4px}
 .c-batt.low{color:var(--red)}
 .c-batt.charging{color:var(--green)}
-.c-batt.saver{color:#ffffff;}
 
 .notch[data-state="music"] .c-song,
 .notch[data-state="music"] .c-album-img,

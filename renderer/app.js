@@ -1388,12 +1388,12 @@ function handleBatteryEvent(bat) {
     if (bat.isCharging) {
       dashBattPctText.style.color = 'var(--green)';
       dashBattFill.setAttribute('fill', 'var(--green)');
-    } else if (bat.percent < 10) {
-      dashBattPctText.style.color = 'var(--red)';
-      dashBattFill.setAttribute('fill', 'var(--red)');
     } else if (bat.powerSaver) {
       dashBattPctText.style.color = '#fbbf24';
       dashBattFill.setAttribute('fill', '#fbbf24');
+    } else if (bat.percent < 10) {
+      dashBattPctText.style.color = 'var(--red)';
+      dashBattFill.setAttribute('fill', 'var(--red)');
     } else if (bat.percent <= 20) {
       dashBattPctText.style.color = 'var(--red)';
       dashBattFill.setAttribute('fill', 'var(--red)');
@@ -1416,10 +1416,10 @@ function handleBatteryEvent(bat) {
 
     if (bat.isCharging) {
       cBattery.classList.add('charging');
-    } else if (bat.percent < 10) {
-      cBattery.classList.add('low');
     } else if (bat.powerSaver) {
       cBattery.classList.add('saver');
+    } else if (bat.percent < 10) {
+      cBattery.classList.add('low');
     } else if (bat.percent <= 20) {
       cBattery.classList.add('low');
     }
@@ -2309,8 +2309,8 @@ function runStartupSequence() {
 
   // Force the banner dimensions directly
   requestAnimationFrame(() => {
-    notch.style.width = '520px';
-    notch.style.height = '180px';
+    notch.style.width = '800px';
+    notch.style.height = '200px';
     notch.style.borderRadius = '0 0 32px 32px';
 
     // Phase 2: After a beat, play boot sound and fade in image
@@ -2329,9 +2329,9 @@ function runStartupSequence() {
       if (intro) intro.style.display = 'none';
 
       // Morph to widget-shaped notch for hello (wide and short)
-      notch.style.width = '420px';
-      notch.style.height = '120px';
-      notch.style.borderRadius = '0 0 28px 28px';
+      notch.style.width = '520px';
+      notch.style.height = '140px';
+      notch.style.borderRadius = '0 0 32px 32px';
 
       // Show hello after the morph transition settles
       setTimeout(() => {
