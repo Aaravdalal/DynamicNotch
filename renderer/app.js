@@ -152,7 +152,9 @@ const panelMap = {
   dnd:             'panelDnd',
   call:            'panelCall',
   'msg-mini':      'panelMsgMini',
-  'msg-expanded':  'panelMsgExpanded'
+  'msg-expanded':  'panelMsgExpanded',
+  pairing:         'panelPairing',
+  startup:         'panelStartup'
 };
 
 function hideAllPanels() {
@@ -261,7 +263,7 @@ function handleBluetoothUpdate(device) {
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
   if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
-  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') return; // Protect message states
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call' || currentState === 'startup') return; // Protect message and startup states
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
@@ -300,7 +302,7 @@ function expand() {
 
 function collapse() {
   if (!isExpanded) return;
-  if (currentState === 'recording' || currentState === 'timer') return; // Force keep expanded
+  if (currentState === 'recording' || currentState === 'timer' || currentState === 'startup') return; // Force keep expanded
   isExpanded = false;
   forcedPanel = null; // Reset pin
   if (currentState === 'file-tray') currentState = 'idle';
@@ -2228,3 +2230,155 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
       }
     });
   }
+
+// ═══ APPLE BOOT CHIME ═══
+function playAppleBootChime() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const duration = 4.0;
+    
+    // Apple Mac startup sound is a synthesized F# Major chord with a lot of depth
+    const freqs = [
+      46.25,  // F#1
+      92.50,  // F#2
+      138.59, // C#3
+      185.00, // F#3
+      233.08, // A#3
+      277.18, // C#4
+      369.99  // F#4
+    ];
+    
+    const masterGain = ctx.createGain();
+    masterGain.connect(ctx.destination);
+    
+    // Quick attack, long decay
+    masterGain.gain.setValueAtTime(0, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.1);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      // Mix of sine and triangle for that organ-like depth
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.value = freq;
+      
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = (i % 2 === 0) ? -0.3 : 0.3; // spread out the sound
+      
+      osc.connect(panner);
+      panner.connect(masterGain);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    });
+  } catch (e) {
+    console.warn("Audio chime failed:", e);
+  }
+}
+
+// ═══ STARTUP SEQUENCE ═══
+function runStartupSequence() {
+  currentState = 'startup';
+  notch.setAttribute('data-state', 'startup');
+
+  // Hide the collapsed bar so it doesn't peek through
+  const collapsedView = document.getElementById('collapsedView');
+  if (collapsedView) collapsedView.style.display = 'none';
+
+  // Get references
+  const panel = document.getElementById('panelStartup');
+  const intro = document.getElementById('startupIntro');
+  const hello = document.getElementById('startupHello');
+
+  // Hide all other panels first
+  hideAllPanels();
+
+  // Show startup panel manually (don't use showActivePanel — it resets height)
+  if (panel) {
+    panel.style.display = 'flex';
+    panel.style.opacity = '1';
+  }
+
+  // Phase 1: Expand notch to banner size for the image
+  notch.classList.remove('collapsed');
+  notch.classList.add('expanded');
+  isExpanded = true;
+  window.notchAPI.setIgnoreMouse(false);
+
+  // Force the banner dimensions directly
+  requestAnimationFrame(() => {
+    notch.style.width = '520px';
+    notch.style.height = '180px';
+    notch.style.borderRadius = '0 0 32px 32px';
+
+    // Phase 2: After a beat, play boot sound and fade in image
+    setTimeout(() => {
+      playAppleBootChime();
+      if (intro) intro.style.opacity = '1';
+    }, 500);
+
+    // Phase 3: Fade out image
+    setTimeout(() => {
+      if (intro) intro.style.opacity = '0';
+    }, 3800);
+
+    // Phase 4: Shrink notch and play hello animation
+    setTimeout(() => {
+      if (intro) intro.style.display = 'none';
+
+      // Morph to widget-shaped notch for hello (wide and short)
+      notch.style.width = '420px';
+      notch.style.height = '120px';
+      notch.style.borderRadius = '0 0 28px 28px';
+
+      // Show hello after the morph transition settles
+      setTimeout(() => {
+        if (hello) hello.style.opacity = '1';
+
+        const lottieContainer = document.getElementById('lottieContainer');
+        if (lottieContainer && window.lottie) {
+          window.lottie.loadAnimation({
+            container: lottieContainer,
+            renderer: 'svg',
+            loop: false,
+            autoplay: true,
+            path: '../assets/hello-white.json'
+          });
+        }
+      }, 500);
+    }, 4800);
+
+    // Phase 5: Fade out hello, then show normal expanded notch
+    setTimeout(() => {
+      if (hello) hello.style.opacity = '0';
+
+      setTimeout(() => {
+        // Clean up startup state
+        currentState = 'idle';
+        notch.setAttribute('data-state', 'idle');
+        notch.style.width = '';
+        notch.style.height = '';
+        notch.style.borderRadius = '';
+
+        // Hide startup panel
+        if (panel) {
+          panel.style.opacity = '0';
+          panel.style.display = 'none';
+        }
+
+        // Restore collapsed bar
+        if (collapsedView) collapsedView.style.display = '';
+
+        // Show normal expanded notch
+        forcedPanel = null;
+        showActivePanel();
+        decideState();
+      }, 600);
+    }, 8500);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', runStartupSequence);
+

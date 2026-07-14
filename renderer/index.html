@@ -6,6 +6,7 @@
   <title>Dynamic Notch</title>
   <link rel="stylesheet" href="styles.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 </head>
 <body>
     <div id="notch" class="notch collapsed" data-state="idle">
@@ -562,12 +563,26 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
+        </div>
+      
+      <!-- ═══ PANEL: STARTUP ═══ -->
+      <div class="panel panel-startup" id="panelStartup" style="display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden;">
+        <!-- Intro Image -->
+        <div id="startupIntro" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.8s ease;">
+          <img id="introImage" src="../assets/intro-banner.png" style="width: 100%; height: 100%; object-fit: cover;" />
+        </div>
+        
+        <!-- Hello Lottie -->
+        <div id="startupHello" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.5s ease; pointer-events: none;">
+          <div id="lottieContainer" style="width: 100%; height: 100%; transform: scale(2.2); transform-origin: center;"></div>
+        </div>
       </div>
-
+      
     </div>
+  </div>
 
-
-
+  <!-- External scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
