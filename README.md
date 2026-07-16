@@ -39,22 +39,19 @@ Simple click on the bottom arrow on your computer then it will show apps and the
 
 ## Pictures:
 
-  <img src="<img width="810" height="197" alt="Screenshot 2026-07-08 122110" src="https://github.com/user-attachments/assets/f31c8a7d-bb48-4c23-89fd-895845b4412b">
+  ## Pictures:
 
-    <img src="<img width="512" height="160" alt="Screenshot 2026-07-08 123529" src="https://github.com/user-attachments/assets/ca4b97f2-b74c-42cd-ab97-4aa28abc9e8a" />
+![Screenshot 2026-07-08 122110](https://github.com/user-attachments/assets/f31c8a7d-bb48-4c23-89fd-895845b4412b)
 
-          <img src="<img width="901" height="188" alt="Screenshot 2026-06-27 135238" src="https://github.com/user-attachments/assets/44c3ff1b-5c21-40c2-826e-b82b5d719b06" />
-" />
+![Screenshot 2026-07-08 123529](https://github.com/user-attachments/assets/ca4b97f2-b74c-42cd-ab97-4aa28abc9e8a)
 
-             <img src="<img width="687" height="298" alt="Screenshot 2026-06-29 151937" src="https://github.com/user-attachments/assets/9edd6288-6323-4f80-9965-99bfa72dc3fa" />
-" />
+![Screenshot 2026-06-27 135238](https://github.com/user-attachments/assets/44c3ff1b-5c21-40c2-826e-b82b5d719b06)
 
-                <img src="<img width="557" height="292" alt="Screenshot 2026-07-01 221129" src="https://github.com/user-attachments/assets/e326fb27-98e0-4ec7-8998-0ed4e6dd6e6a" />
-" />
+![Screenshot 2026-06-29 151937](https://github.com/user-attachments/assets/9edd6288-6323-4f80-9965-99bfa72dc3fa)
 
-                   <img src="<img width="437" height="82" alt="Screenshot 2026-07-05 174240" src="https://github.com/user-attachments/assets/864e1604-19a2-4f18-b210-8dd5cd12c0fc" />
-" />
+![Screenshot 2026-07-01 221129](https://github.com/user-attachments/assets/e326fb27-98e0-4ec7-8998-0ed4e6dd6e6a)
 
+![Screenshot 2026-07-05 174240](https://github.com/user-attachments/assets/864e1604-19a2-4f18-b210-8dd5cd12c0fc)
   
 
 
