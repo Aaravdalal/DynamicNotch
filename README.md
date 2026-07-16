@@ -33,6 +33,14 @@ Simple. Just hover in, and hover out when you do not want it.
 
 Windows FOR NOW, because I do not have a Mac to test on. Maybe if I get one from macondo, Haha.
 
+## How to pair messages?
+
+Simple click on the bottom arrow on your computer then it will show apps and then right click on dynamic notch and then click login to messages and then scan a qr code which pairs the messaging system with the notch and you're all set then!
+
 ## Pictures:
+
+  <img src="<img width="810" height="197" alt="Screenshot 2026-07-08 122110" src="https://github.com/user-attachments/assets/f31c8a7d-bb48-4c23-89fd-895845b4412b" />
+" />
+
 
 
