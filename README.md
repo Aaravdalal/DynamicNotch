@@ -50,13 +50,20 @@ Loading animation, apple-like hello animation
 
 ![Screenshot 2026-06-27 135238](https://github.com/user-attachments/assets/44c3ff1b-5c21-40c2-826e-b82b5d719b06)
 
+Search and record search and music playing on side
+
 ![Screenshot 2026-06-29 151937](https://github.com/user-attachments/assets/9edd6288-6323-4f80-9965-99bfa72dc3fa)
+
+Quickshare with file saving on notch
 
 ![Screenshot 2026-07-01 221129](https://github.com/user-attachments/assets/e326fb27-98e0-4ec7-8998-0ed4e6dd6e6a)
 
-Message appearing on notch
+Picture in picture on notch in a youtube video
 
 ![Screenshot 2026-07-05 174240](https://github.com/user-attachments/assets/864e1604-19a2-4f18-b210-8dd5cd12c0fc)
+
+Message appearing on notch
+
   
 
 
