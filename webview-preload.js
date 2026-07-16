@@ -27,52 +27,58 @@ window.addEventListener('message', (event) => {
 });
 
 ipcRenderer.on('hidden-send-reply', (event, text) => {
+  // Find a clickable "send" control across buttons and role=button elements.
+  const findSendBtn = () => {
+    const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+    return candidates.find(el => {
+      const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
+      return label.includes('send') &&
+             !label.includes('schedule') &&
+             !label.includes('attach') &&
+             !label.includes('attachment') &&
+             !el.disabled;
+    });
+  };
+
+  const triggerSend = (inputEl) => {
+    // Give the framework time to register the inserted text and enable send.
+    setTimeout(() => {
+      const sendBtn = findSendBtn();
+      if (sendBtn) {
+        sendBtn.click();
+      } else if (inputEl) {
+        inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+        inputEl.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+        inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+      }
+    }, 350);
+  };
+
   if (window.location.hostname.includes('messages.google.com')) {
-    
-    // Attempt to select the most recent conversation in the sidebar first
+    // Select the most recent conversation in the sidebar first.
     const firstConv = document.querySelector('mws-conversation-list-item');
     if (firstConv) {
-      // Find the clickable element inside it
       const clickable = firstConv.querySelector('a, button, [role="button"]') || firstConv;
       clickable.click();
     }
-    
+
     setTimeout(() => {
       const input = document.querySelector('textarea, mws-autosize-textarea');
       if (input) {
         input.focus();
         document.execCommand('insertText', false, text);
-        
-        setTimeout(() => {
-          const sendBtns = Array.from(document.querySelectorAll('button'));
-          const sendBtn = sendBtns.find(b => {
-             const label = (b.getAttribute('aria-label') || '').toLowerCase();
-             return label.includes('send') && !label.includes('schedule');
-          });
-          if (sendBtn) {
-            sendBtn.click();
-          } else {
-            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-          }
-        }, 150);
+        // Let Angular/Polymer know the value changed so the send button enables.
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        triggerSend(input);
       }
-    }, 400); // Wait 400ms for the conversation view to render after clicking
-    
+    }, 400);
   } else if (window.location.hostname.includes('chat.google.com')) {
     const input = document.querySelector('div[contenteditable="true"]');
     if (input) {
       input.focus();
       document.execCommand('insertText', false, text);
-      
-      setTimeout(() => {
-        const sendBtn = document.querySelector('[aria-label="Send message"]');
-        if (sendBtn) {
-          sendBtn.click();
-        } else {
-          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-          input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        }
-      }, 150);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      triggerSend(input);
     }
   }
 });
