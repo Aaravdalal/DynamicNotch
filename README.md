@@ -39,8 +39,7 @@ Simple click on the bottom arrow on your computer then it will show apps and the
 
 ## Pictures:
 
-  <img src="<img width="810" height="197" alt="Screenshot 2026-07-08 122110" src="https://github.com/user-attachments/assets/f31c8a7d-bb48-4c23-89fd-895845b4412b" />
-" />
+  <img src="<img width="810" height="197" alt="Screenshot 2026-07-08 122110" src="https://github.com/user-attachments/assets/f31c8a7d-bb48-4c23-89fd-895845b4412b" 
 
 
 
