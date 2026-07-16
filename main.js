@@ -13,6 +13,7 @@ const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
 const { initFileTray } = require('./modules/file-tray');
 const { startExternalTimersMonitor } = require('./modules/external-timers');
 const { startDownloadsMonitor } = require('./modules/downloads');
+const { startHeartbeat } = require('./modules/heartbeat');
 const { spawn } = require('child_process');
 
 // ─── Global crash prevention ───
@@ -634,6 +635,7 @@ ipcMain.on('send-reply', (event, text) => {
     hiddenGchat.webContents.send('hidden-send-reply', text);
   }
 });
+
 // =============================================
 
 app.whenReady().then(() => {
@@ -657,12 +659,11 @@ app.whenReady().then(() => {
   });
   createWindow();
   createTray();
+  
+  startHeartbeat();
 
   globalShortcut.register('CommandOrControl+M', () => {
     safeSend('mock-message');
-  });
-  globalShortcut.register('CommandOrControl+Shift+C', () => {
-    safeSend('mock-call');
   });
 
   ipcMain.handle('get-media', async () => {

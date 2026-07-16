@@ -62,12 +62,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onMockMessage: (callback) => {
     ipcRenderer.on('mock-message', () => callback());
   },
-  onMockCall: (callback) => {
-    ipcRenderer.on('mock-call', () => callback());
-  },
-  onMockCall: (callback) => {
-    ipcRenderer.on('mock-call', () => callback());
-  },
   selectProfileImage: () => ipcRenderer.invoke('select-profile-image'),
   loadProfileImage: () => ipcRenderer.invoke('load-profile-image'),
   openCalendar: () => ipcRenderer.invoke('open-calendar'),

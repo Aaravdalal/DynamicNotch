@@ -7,7 +7,6 @@ let hoverTimeout = null;
 let currentState = 'idle';
 let mediaData = { playing: false };
 let recordingData = { recording: false };
-let batteryData = { percent: 100, isCharging: false };
 let wasCharging = null;
 let showedLowBattery = false;
 let btToastTimeout = null;
@@ -22,6 +21,11 @@ let forcedPanel = null; // override for expansion
 let isDragActive = false;
 let isMouseOverNotch = false;
 let ignoreMouseLeave = false;
+let reenterGuard = false; // brief lockout so collapsing doesn't instantly re-expand
+let wasMsgMiniBeforeExpand = false; // Track if we expanded from msg-mini state
+let lastMouseX = 0;
+let lastMouseY = 0;
+let isVoiceSearchActive = false; // Track when voice search is active to suppress recording UI
 
 // Timer state
 let isTimerActive = false;
@@ -59,6 +63,9 @@ window.notchAPI.onExternalTimerUpdate((data) => {
       decideState();
     }
   } else if (data.type === 'mic_active') {
+    // Don't show recording panel for voice search
+    if (isVoiceSearchActive) return;
+    
     const was = recordingData.recording;
     const wasPaused = recordingData.state === 'PAUSED';
     
@@ -100,6 +107,9 @@ window.notchAPI.onExternalTimerUpdate((data) => {
     if (pauseBtn) pauseBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
     
   } else if (data.type === 'mic_paused') {
+    // Don't process if voice search was active
+    if (isVoiceSearchActive) return;
+    
     if (!recordingData.recording) {
        // if we caught a paused state but weren't recording before, just initialize it
        recordingData.recording = true;
@@ -121,6 +131,9 @@ window.notchAPI.onExternalTimerUpdate((data) => {
     
     decideState();
   } else if (data.type === 'mic_inactive') {
+    // Don't process if voice search was active
+    if (isVoiceSearchActive) return;
+    
     if (recordingData.recording) {
       recordingData.recording = false;
       if (recordingData.interval) {
@@ -150,9 +163,9 @@ const panelMap = {
   video:           'panelVideo',
   download:        'panelDownload',
   dnd:             'panelDnd',
-  call:            'panelCall',
   'msg-mini':      'panelMsgMini',
   'msg-expanded':  'panelMsgExpanded',
+  'unreads':       'panelUnreads',
   pairing:         'panelPairing',
   startup:         'panelStartup'
 };
@@ -263,7 +276,7 @@ function handleBluetoothUpdate(device) {
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
   if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
-  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call' || currentState === 'startup') return; // Protect message and startup states
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads' || currentState === 'startup') return; // Protect message and startup states
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
@@ -273,6 +286,7 @@ function decideState() {
   else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
   else if (btConnectedDevice) s = 'bt-connected';
   else if (mediaData.playing || mediaData.paused) s = 'music';
+  else if (unreadList.length > 0) s = 'unreads';
   
   setState(s);
 
@@ -306,60 +320,189 @@ function collapse() {
   isExpanded = false;
   forcedPanel = null; // Reset pin
   if (currentState === 'file-tray') currentState = 'idle';
-  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'call') currentState = 'idle';
+  if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads') currentState = 'idle';
   hideAllPanels();
   notch.classList.remove('expanded');
   notch.classList.add('collapsed');
   notch.classList.remove('forced-full'); // Remove forced size
-  window.notchAPI.setIgnoreMouse(true);
-  decideState(); // Refresh sub-notch
+  
+  // Wait for the collapse transition to complete, then check if mouse is still over notch
+  // Use requestAnimationFrame to let the CSS transition finish
+  requestAnimationFrame(() => {
+    // Check if mouse is over the collapsed notch using last known mouse position
+    const elementUnderMouse = document.elementFromPoint(lastMouseX, lastMouseY);
+    const mouseOverNotch = elementUnderMouse && notch.contains(elementUnderMouse);
+    
+    if (!mouseOverNotch) {
+      window.notchAPI.setIgnoreMouse(true);
+      isMouseOverNotch = false; // Mouse has truly left
+    } else {
+      // Mouse is still over the collapsed notch - keep receiving events
+      // isMouseOverNotch stays true so we can detect when it leaves the collapsed notch
+    }
+  });
+  
+  decideState(); // Refresh sub-notch etc.
 }
 
 let isMicRecording = false;
 
 /* ─── Interactions ─── */
 function setupInteractions() {
-  notch.addEventListener('mouseenter', () => {
-    isMouseOverNotch = true;
-    window.notchAPI.setIgnoreMouse(false);
-    
-    if (window.msgCollapseTimeout) {
-      clearTimeout(window.msgCollapseTimeout);
-      window.msgCollapseTimeout = null;
-    }
-    if (currentState === 'msg-mini') {
-      currentState = 'msg-expanded';
-      notch.setAttribute('data-state', 'msg-expanded');
-      showActivePanel();
-      setTimeout(() => {
-        const replyInput = document.getElementById('msgReplyInput');
-        if (replyInput) replyInput.focus();
-      }, 300);
-      return;
-    }
+// ─── Hover detection (robust, mousemove-driven) ───
+  // The window is created click-through (setIgnoreMouseEvents(true, {forward:true}))
+  // so the page still receives mousemove.
+function handleNotchEnter() {
+  // Brief lockout after a collapse so the notch doesn't instantly re-expand
+  // while the pointer is still sitting over the (now smaller) collapsed pill.
+  if (reenterGuard) return;
+  isMouseOverNotch = true;
+  window.notchAPI.setIgnoreMouse(false);
+  
+  if (window.msgCollapseTimeout) { 
+    clearTimeout(window.msgCollapseTimeout); 
+    window.msgCollapseTimeout = null; 
+  }
+  if (currentState === 'msg-mini') {
+    wasMsgMiniBeforeExpand = true;
+    currentState = 'msg-expanded';
+    notch.setAttribute('data-state', 'msg-expanded');
+    showActivePanel();
+    setTimeout(() => {
+      const replyInput = document.getElementById('msgReplyInput');
+      if (replyInput) replyInput.focus();
+    }, 300);
+    return;
+  }
 
-    if (!isExpanded) hoverTimeout = setTimeout(() => {
-        expand();
-    }, 180);
-  });
-  notch.addEventListener('mouseleave', () => {
-    isMouseOverNotch = false;
-    const searchInput = document.getElementById('dashSearchInput');
-    if (searchInput && document.activeElement === searchInput) return;
-    if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
-    if (currentState === 'file-tray' && isDragActive) return; // Do not collapse when actively dragging files
-    if (currentState === 'recording') return; // Do not collapse during recording
-    if (ignoreMouseLeave) return; // Ignore collapse during transition cooldown
-    if (isExpanded) {
-        collapse();
+  if (!isExpanded) hoverTimeout = setTimeout(() => {
+    expand();
+  }, 30);
+}
+
+function handleNotchLeave() {
+  const searchInput = document.getElementById('dashSearchInput');
+  if (searchInput && document.activeElement === searchInput) return;
+  if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+  if (currentState === 'file-tray' && isDragActive) return;
+  if (currentState === 'recording') return;
+  if (ignoreMouseLeave) return;
+  
+  if (isExpanded) {
+    // If we expanded from msg-mini state, return to msg-mini instead of idle
+    if (currentState === 'msg-expanded' && wasMsgMiniBeforeExpand) {
+      currentState = 'msg-mini';
+      wasMsgMiniBeforeExpand = false;
     }
-    window.notchAPI.setIgnoreMouse(true);
+    if (currentState === 'unreads') {
+      currentState = 'idle';
+    }
+    collapse();
+    if (currentState === 'idle') {
+      reenterGuard = true;
+      setTimeout(() => { reenterGuard = false; }, 80);
+    }
+  } else {
+    // Determine if mouse is over the collapsed notch
+    const elementUnderMouse = document.elementFromPoint(lastMouseX, lastMouseY);
+    const mouseOverNotch = elementUnderMouse && notch.contains(elementUnderMouse);
+    isMouseOverNotch = mouseOverNotch;  // Set based on actual position
+    
+    // If mouse is not over collapsed notch, set ignore mouse
+    if (!mouseOverNotch) {
+      window.notchAPI.setIgnoreMouse(true);
+    }
+  }
+}
+
+function isMouseOverNotchBounds(e, forLeave) {
+  const r = notch.getBoundingClientRect();
+  // Use smaller margin for leave detection (0) vs enter (4px) for snappier collapse
+  const margin = forLeave ? 0 : 4;
+  return e.clientX >= r.left - margin && e.clientX <= r.right + margin &&
+         e.clientY >= r.top - margin && e.clientY <= r.bottom + margin;
+}
+
+  // Fallback native listener - trigger collapse when mouse leaves notch element entirely
+  notch.addEventListener('mouseleave', (e) => {
+    // When expanded, collapse immediately on mouseleave from notch
+    if (isMouseOverNotch && isExpanded) {
+      handleNotchLeave();
+    }
+  });
+
+  // Also handle mouseout on notch for immediate collapse when cursor leaves notch bounds
+  notch.addEventListener('mouseout', (e) => {
+    // Only trigger if leaving notch entirely (not moving to a child)
+    const related = e.relatedTarget;
+    if (isMouseOverNotch && isExpanded && (!related || !notch.contains(related))) {
+      handleNotchLeave();
+    }
+  });
+
+  // Additional mouseleave on document for when cursor leaves window entirely
+  document.addEventListener('mouseleave', (e) => {
+    if (isMouseOverNotch && (!e.relatedTarget || e.relatedTarget === null)) {
+      handleNotchLeave();
+    }
+  });
+
+  // Mouseleave on panels for immediate collapse when leaving expanded notch area
+  const panels = notch.querySelectorAll('.panel');
+  panels.forEach(panel => {
+    panel.addEventListener('mouseleave', (e) => {
+      // When leaving any panel while expanded, collapse immediately
+      if (isMouseOverNotch && isExpanded) {
+        handleNotchLeave();
+      }
+    });
+  });
+
+  // Quick share icon hover out effect (same as notch)
+const quickShareIcon = document.getElementById('quickShareIcon');
+   if (quickShareIcon) {
+     quickShareIcon.addEventListener('mouseleave', (e) => {
+       if (isMouseOverNotch && isExpanded) {
+         handleNotchLeave();
+       }
+     });
+     quickShareIcon.addEventListener('mouseover', (e) => {
+       if (mediaData.playing && !isExpanded) {
+         expand();
+       }
+     });
+     quickShareIcon.addEventListener('mouseout', (e) => {
+       const related = e.relatedTarget;
+       if (isMouseOverNotch && isExpanded && (!related || !quickShareIcon.contains(related))) {
+         handleNotchLeave();
+       }
+     });
+   }
+
+  document.addEventListener('mousemove', (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    if (isMouseOverNotchBounds(e, false) && !isMouseOverNotch) handleNotchEnter();
+    else if (!isMouseOverNotchBounds(e, true) && isMouseOverNotch) handleNotchLeave();
   });
   collapsedView.addEventListener('click', e => { 
     e.stopPropagation(); 
     if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; } 
     expand(); 
   });
+  
+  const unreadBadge = document.getElementById('cUnreadBadge');
+  if (unreadBadge) {
+    unreadBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (unreadList.length > 0) {
+        currentState = 'unreads';
+        notch.setAttribute('data-state', 'unreads');
+        if (!isExpanded) expand();
+        else showActivePanel();
+      }
+    });
+  }
 
   const dashHomeBtn = document.getElementById('dashHomeBtn');
   if (dashHomeBtn) {
@@ -599,10 +742,50 @@ function setupInteractions() {
       btn.style.color = '#22c55e'; // Green highlight
     }
   };
+  
+  // Helper to update star/PiP button icon based on videoId availability
+  function updateStarButtons() {
+    const hasVideo = mediaData && mediaData.videoId;
+    const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+    
+    const pStar = document.getElementById('shuffleBtn');
+    const dStar = document.getElementById('dashStarBtn');
+    
+    if (pStar) {
+      const svg = pStar.querySelector('svg');
+      if (svg) {
+        if (hasVideo) {
+          svg.outerHTML = starSvg;
+          pStar.title = 'Toggle favorite';
+        } else {
+          svg.outerHTML = pipSvg;
+          pStar.title = 'Play in Notch PiP';
+        }
+      }
+    }
+    if (dStar) {
+      const svg = dStar.querySelector('svg');
+      if (svg) {
+        if (hasVideo) {
+          svg.outerHTML = starSvg;
+          dStar.title = 'Toggle favorite';
+        } else {
+          svg.outerHTML = pipSvg;
+          dStar.title = 'Play in Notch PiP';
+        }
+      }
+    }
+  }
+
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
   if(pStar) pStar.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (mediaData && mediaData.videoId) {
+    const hasVideo = mediaData && mediaData.videoId;
+    if (hasVideo) {
+      // Toggle favorite star state
+      toggleStar(pStar);
+    } else {
       // Stop in-cover-art playback if active
       const dashIframe = document.getElementById('dashYtIframe');
       if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
@@ -617,15 +800,17 @@ function setupInteractions() {
       if (mainYtIframe) {
         mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
       }
-    } else {
-      toggleStar(pStar);
     }
   });
 
   const dStar = document.getElementById('dashStarBtn'); // dashMusic star
   if(dStar) dStar.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (mediaData && mediaData.videoId) {
+    const hasVideo = mediaData && mediaData.videoId;
+    if (hasVideo) {
+      // Toggle favorite star state
+      toggleStar(dStar);
+    } else {
       // Stop in-cover-art playback if active
       const dashIframe = document.getElementById('dashYtIframe');
       if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
@@ -640,10 +825,11 @@ function setupInteractions() {
       if (mainYtIframe) {
         mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
       }
-    } else {
-      toggleStar(dStar);
     }
   });
+
+  // Call updateStarButtons initially and whenever mediaData changes
+  // We'll call it from updateMusicUI
 
   setupScrubberDrag();
 
@@ -665,6 +851,8 @@ function setupInteractions() {
     dashChevronBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (currentState === 'music') {
+        // When music is playing, always open the music panel in expanded notch
+        // (replaces idle panel with notifications/calendar)
         forcedPanel = null;
         notch.classList.remove('forced-full');
         showActivePanel();
@@ -739,6 +927,7 @@ function setupInteractions() {
         
         if (isMicRecording) {
           isMicRecording = false;
+          isVoiceSearchActive = false;
           searchMicBtn.innerHTML = originalMicSvg;
           dashSearchInput.placeholder = 'Search Google...';
           if (activeMicStop) activeMicStop();
@@ -748,6 +937,7 @@ function setupInteractions() {
         
         try {
           isMicRecording = true;
+          isVoiceSearchActive = true;
           searchMicBtn.innerHTML = '<div style="width:10px;height:10px;background:var(--red);border-radius:50%;animation:pulse 1s infinite"></div>';
           dashSearchInput.placeholder = 'Recording...';
           
@@ -814,6 +1004,8 @@ function setupInteractions() {
               setTimeout(() => {
                 if (!isMicRecording) dashSearchInput.placeholder = 'Search Google...';
               }, 2000);
+            } finally {
+              isVoiceSearchActive = false;
             }
           };
           
@@ -821,6 +1013,7 @@ function setupInteractions() {
           console.error('Speech recognition error:', err);
           dashSearchInput.placeholder = 'Mic error!';
           isMicRecording = false;
+          isVoiceSearchActive = false;
           searchMicBtn.innerHTML = originalMicSvg;
           setTimeout(() => dashSearchInput.placeholder = 'Search Google...', 2000);
         }
@@ -900,6 +1093,9 @@ function updateClock() {
 
 /* ─── Media ─── */
 function handleMediaUpdate(data) {
+  // Don't interrupt startup animation
+  if (currentState === 'startup') return;
+
   mediaData = data;
   updateMusicUI();
   decideState();
@@ -993,10 +1189,65 @@ function getAverageRGB(img) {
   } catch(e){return fallback}
 }
 
-function updateMusicUI() {
+function updateStarButtons() {
+    const hasVideo = mediaData && mediaData.videoId;
+    const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+    
+    const pStar = document.getElementById('shuffleBtn');
+    const dStar = document.getElementById('dashStarBtn');
+    
+    if (pStar) {
+      const svg = pStar.querySelector('svg');
+      if (svg) {
+        if (hasVideo) {
+          svg.outerHTML = starSvg;
+          pStar.title = 'Toggle favorite';
+        } else {
+          svg.outerHTML = pipSvg;
+          pStar.title = 'Play in Notch PiP';
+        }
+      }
+    }
+    if (dStar) {
+      const svg = dStar.querySelector('svg');
+      if (svg) {
+        if (hasVideo) {
+          svg.outerHTML = starSvg;
+          dStar.title = 'Toggle favorite';
+        } else {
+          svg.outerHTML = pipSvg;
+          dStar.title = 'Play in Notch PiP';
+        }
+      }
+    }
+  }
+  
+  function updateMusicUI() {
   const coverImg = document.getElementById('coverImg');
   const placeholder = document.getElementById('albumPlaceholder');
   const cAlbum = document.getElementById('cAlbumImg');
+
+  // Update star/PiP buttons based on whether video is available
+  const hasVideo = mediaData && mediaData.videoId;
+  const pStar = document.getElementById('shuffleBtn');
+  const dStar = document.getElementById('dashStarBtn');
+  const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+  const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+  
+  function updateStarButton(btn) {
+    if (!btn) return;
+    if (hasVideo) {
+      btn.innerHTML = starSvg;
+      btn.title = 'Add to favorites';
+    } else {
+      btn.innerHTML = pipSvg;
+      btn.title = 'Play in Notch PiP';
+    }
+  }
+  
+  updateStarButton(pStar);
+  updateStarButton(dStar);
 
   if (mediaData.playing || mediaData.paused) {
     const track = mediaData.track || mediaData.title;
@@ -1082,6 +1333,19 @@ function updateMusicUI() {
         if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
         if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'none';
         if (musicYtIframe) { musicYtIframe.style.display = 'none'; musicYtIframe.src = ''; }
+        // Reset to PiP icon when no videoId
+        const pStar = document.getElementById('shuffleBtn');
+        if (pStar) {
+          pStar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+          pStar.style.color = 'rgba(255,255,255,0.5)';
+          pStar.title = 'Play in Notch PiP';
+        }
+        const dStar = document.getElementById('dashStarBtn');
+        if (dStar) {
+          dStar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+          dStar.style.color = 'rgba(255,255,255,0.5)';
+          dStar.title = 'Play in Notch PiP';
+        }
       }
 
       const btmuImg = document.getElementById('btmuCoverImg');
@@ -1429,9 +1693,14 @@ function handleBatteryEvent(bat) {
 function showBatteryToast(bat) {
   if (battToastTimeout) clearTimeout(battToastTimeout);
 
+  // Don't interrupt startup animation
+  if (currentState === 'startup') return;
+
   if (bat.isCharging) {
     document.getElementById('chargingPct').textContent = bat.percent + '%';
     document.getElementById('chargingBattFill').setAttribute('width', Math.max(1, (bat.percent/100)*15));
+    // Don't interrupt startup animation
+    if (currentState === 'startup') return;
     setState('charging'); expand();
     battToastTimeout = setTimeout(() => { battToastTimeout = null; collapse(); setTimeout(decideState, 400); }, 4000);
     return;
@@ -1440,6 +1709,8 @@ function showBatteryToast(bat) {
   if (bat.percent <= 20) {
     document.getElementById('lowBattPct').textContent = bat.percent + '%';
     document.getElementById('lowBattFill').setAttribute('width', Math.max(1, (bat.percent/100)*15));
+    // Don't interrupt startup animation
+    if (currentState === 'startup') return;
     setState('low-battery'); expand();
     battToastTimeout = setTimeout(() => { battToastTimeout = null; collapse(); setTimeout(decideState, 400); }, 4000);
     return;
@@ -1528,6 +1799,10 @@ function showBluetoothToast(device) {
   // Show expanded toast first
   if (btToastTimeout) clearTimeout(btToastTimeout);
   if (isExpanded) collapse();
+
+  // Don't interrupt startup animation
+  if (currentState === 'startup') return;
+
   setState('bluetooth'); expand();
   btToastTimeout = setTimeout(() => {
     btToastTimeout = null;
@@ -1536,7 +1811,218 @@ function showBluetoothToast(device) {
   }, 5000);
 }
 
-/* ─── Recording ─── */
+/* ─── Unread Messages (paired device carousel) ─── */
+let unreadList = [];
+let unreadIndex = 0;
+let messagesPaired = false;
+
+function renderUnreadCard(item) {
+  const card = document.createElement('div');
+  card.className = 'unread-card';
+
+  const avatar = document.createElement('img');
+  avatar.className = 'unread-card-avatar';
+  avatar.alt = '';
+  avatar.src = item.avatar || ('https://i.pravatar.cc/150?u=' + encodeURIComponent(item.sender || 'unknown'));
+  card.appendChild(avatar);
+
+  const body = document.createElement('div');
+  body.className = 'unread-card-body';
+
+  const top = document.createElement('div');
+  top.className = 'unread-card-top';
+  const sender = document.createElement('span');
+  sender.className = 'unread-card-sender';
+  sender.textContent = item.sender || 'Unknown Sender';
+  const time = document.createElement('span');
+  time.className = 'unread-card-time';
+  time.textContent = item.time || '';
+  top.appendChild(sender);
+  top.appendChild(time);
+
+  const text = document.createElement('div');
+  text.className = 'unread-card-text';
+  text.textContent = item.text || '';
+
+  body.appendChild(top);
+  body.appendChild(text);
+  card.appendChild(body);
+  return card;
+}
+
+function updateUnreadTransform() {
+  const track = document.getElementById('unreadsTrack');
+  if (track) track.style.transform = 'translateX(-' + (unreadIndex * 100) + '%)';
+  const dots = document.querySelectorAll('#unreadsDots .unreads-dot');
+  dots.forEach((d, i) => d.classList.toggle('active', i === unreadIndex));
+  const prev = document.getElementById('unreadsPrev');
+  const next = document.getElementById('unreadsNext');
+  if (prev) prev.disabled = unreadIndex <= 0;
+  if (next) next.disabled = unreadIndex >= unreadList.length - 1;
+}
+
+function goToUnread(i) {
+  if (unreadList.length === 0) return;
+  unreadIndex = Math.max(0, Math.min(i, unreadList.length - 1));
+  updateUnreadTransform();
+}
+function nextUnread() { goToUnread(unreadIndex + 1); }
+function prevUnread() { goToUnread(unreadIndex - 1); }
+
+function updateUnreadBadge(count) {
+  const badge = document.getElementById('cUnreadBadge');
+  if (badge) {
+    if (count > 0) {
+      badge.style.display = 'inline-block';
+      badge.textContent = count > 99 ? '99+' : String(count);
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function renderUnreads(list) {
+  unreadList = Array.isArray(list) ? list : [];
+  const track = document.getElementById('unreadsTrack');
+  const dots = document.getElementById('unreadsDots');
+  const empty = document.getElementById('unreadsEmptyState');
+  const login = document.getElementById('dashLoginContainer');
+  const carousel = document.getElementById('unreadsCarousel');
+  const countBadge = document.getElementById('unreadCountBadge');
+  if (!track) return;
+
+  if (unreadList.length > 0) messagesPaired = true;
+  if (messagesPaired && login) login.style.display = 'none';
+  if (countBadge) {
+    countBadge.style.display = unreadList.length > 0 ? 'inline-block' : 'none';
+    countBadge.textContent = unreadList.length > 99 ? '99+' : String(unreadList.length);
+  }
+
+  track.innerHTML = '';
+  if (dots) dots.innerHTML = '';
+
+  if (unreadList.length === 0) {
+    if (carousel) carousel.style.display = 'none';
+    if (dots) dots.style.display = 'none';
+    if (empty) empty.style.display = messagesPaired ? 'block' : 'none';
+    if (login) login.style.display = messagesPaired ? 'none' : 'block';
+    updateUnreadBadge(0);
+    return;
+  }
+
+  if (carousel) carousel.style.display = 'flex';
+  if (empty) empty.style.display = 'none';
+
+  unreadList.forEach((item, i) => {
+    track.appendChild(renderUnreadCard(item));
+    if (dots) {
+      const dot = document.createElement('div');
+      dot.className = 'unreads-dot' + (i === 0 ? ' active' : '');
+      dots.appendChild(dot);
+    }
+  });
+  if (dots) dots.style.display = unreadList.length > 1 ? 'flex' : 'none';
+
+  unreadIndex = 0;
+  updateUnreadTransform();
+  updateUnreadBadge(unreadList.length);
+  
+  renderCompactUnreads(unreadList);
+}
+
+function renderCompactUnreadCard(item) {
+  const card = document.createElement('div');
+  card.className = 'unreads-compact-card';
+  
+  const avatar = document.createElement('img');
+  avatar.className = 'unreads-compact-avatar';
+  avatar.alt = '';
+  avatar.src = item.avatar || ('https://i.pravatar.cc/150?u=' + encodeURIComponent(item.sender || 'unknown'));
+  card.appendChild(avatar);
+  
+  const body = document.createElement('div');
+  body.className = 'unreads-compact-body';
+  
+  const top = document.createElement('div');
+  top.className = 'unreads-compact-top';
+  const sender = document.createElement('span');
+  sender.className = 'unreads-compact-sender';
+  sender.textContent = item.sender || 'Unknown Sender';
+  const time = document.createElement('span');
+  time.className = 'unreads-compact-time';
+  time.textContent = item.time || '';
+  top.appendChild(sender);
+  top.appendChild(time);
+  
+  const text = document.createElement('div');
+  text.className = 'unreads-compact-text';
+  text.textContent = item.text || '';
+  
+  body.appendChild(top);
+  body.appendChild(text);
+  card.appendChild(body);
+  
+  card.addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentState = 'msg-expanded';
+    notch.setAttribute('data-state', 'msg-expanded');
+    showActivePanel();
+    const replyInput = document.getElementById('msgReplyInput');
+    if (replyInput) replyInput.focus();
+  });
+  
+  return card;
+}
+
+function renderCompactUnreads(list) {
+  const track = document.getElementById('unreadsCompactTrack');
+  const empty = document.getElementById('unreadsCompactEmpty');
+  if (!track) return;
+  
+  track.innerHTML = '';
+  
+  if (!list || list.length === 0) {
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  
+  if (empty) empty.style.display = 'none';
+  
+  list.forEach(item => {
+    track.appendChild(renderCompactUnreadCard(item));
+  });
+}
+
+function setupUnreads() {
+  const prev = document.getElementById('unreadsPrev');
+  const next = document.getElementById('unreadsNext');
+  if (prev) prev.addEventListener('click', (e) => { e.stopPropagation(); prevUnread(); });
+  if (next) next.addEventListener('click', (e) => { e.stopPropagation(); nextUnread(); });
+
+  const vp = document.getElementById('unreadsViewport');
+  if (!vp) return;
+  let startX = 0, dragging = false, dx = 0;
+  vp.addEventListener('pointerdown', (e) => {
+    dragging = true; startX = e.clientX; dx = 0;
+    try { vp.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  vp.addEventListener('pointermove', (e) => { if (dragging) dx = e.clientX - startX; });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    const threshold = 40;
+    if (dx <= -threshold) nextUnread();
+    else if (dx >= threshold) prevUnread();
+  };
+  vp.addEventListener('pointerup', end);
+  vp.addEventListener('pointercancel', () => { dragging = false; });
+  vp.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      if (e.deltaX > 0) nextUnread(); else prevUnread();
+    }
+  }, { passive: false });
+}
 async function fetchRecording() {
   // Handled by external-timers now.
 }
@@ -1616,6 +2102,22 @@ async function fetchRecording() {
   window.notchAPI.onMicPeak((peak) => {
     updateMicVisualizerWithPeak(peak);
   });
+
+  // Unread messages carousel (paired device)
+  setupUnreads();
+  if (window.notchAPI.onUnreadsList) {
+    window.notchAPI.onUnreadsList((list) => renderUnreads(list));
+  }
+  if (window.notchAPI.onUnreadCount) {
+    window.notchAPI.onUnreadCount((count) => {
+      if (typeof count === 'number' && count > 0) {
+        messagesPaired = true;
+        const login = document.getElementById('dashLoginContainer');
+        if (login) login.style.display = 'none';
+        updateUnreadBadge(count);
+      }
+    });
+  }
 });
 
 let currentSliderType = 'vol';
@@ -1700,6 +2202,8 @@ if (window.notchAPI.onSysDnd) {
       document.getElementById('dndText').textContent = 'Ringer';
       document.querySelector('.dnd-icon-bg').style.background = 'gray';
     }
+    // Don't interrupt startup animation
+    if (currentState === 'startup') return;
     forcedPanel = 'panelDnd';
     notch.setAttribute('data-state', 'dnd');
     expand();
@@ -1714,6 +2218,9 @@ if (window.notchAPI.onSysDnd) {
 }
 
 function showSlider(val, isBright) {
+  // Don't interrupt startup animation
+  if (currentState === 'startup') return;
+
   updateSliderUI(val, isBright, false);
   forcedPanel = 'panelSlider';
   notch.setAttribute('data-state', 'slider');
@@ -1742,6 +2249,9 @@ if (window.notchAPI.onDownloadUpdate) {
     if (dlFilename) dlFilename.textContent = filename || '';
     
     if (state === 'downloading') {
+      // Don't interrupt startup animation
+      if (currentState === 'startup') return;
+
       dlTitle.textContent = 'Downloading...';
       dlTitle.style.color = '#fff';
       dlArrow.style.display = 'block';
@@ -1756,6 +2266,9 @@ if (window.notchAPI.onDownloadUpdate) {
       
       clearTimeout(downloadTimeout);
     } else if (state === 'complete') {
+      // Don't interrupt startup animation
+      if (currentState === 'startup') return;
+
       dlTitle.textContent = 'Download Complete';
       dlTitle.style.color = '#0a84ff';
       dlCheck.style.stroke = '#0a84ff';
@@ -2108,25 +2621,11 @@ if (panelMsgMini) {
   });
 }
 
-const callBtnDecline = document.querySelector('.call-btn.decline');
-const callBtnAccept = document.querySelector('.call-btn.accept');
-if (callBtnDecline) {
-  callBtnDecline.addEventListener('click', (e) => {
-    e.stopPropagation();
-    collapse();
-    setTimeout(decideState, 350);
-  });
-}
-if (callBtnAccept) {
-  callBtnAccept.addEventListener('click', (e) => {
-    e.stopPropagation();
-    collapse();
-    setTimeout(decideState, 350);
-  });
-}
-
 if (window.notchAPI && window.notchAPI.onMockMessage) {
   window.notchAPI.onMockMessage(() => {
+    // Don't interrupt startup animation
+    if (currentState === 'startup') return;
+
     currentState = 'msg-mini';
     notch.setAttribute('data-state', 'msg-mini');
     ignoreMouseLeave = true;
@@ -2134,18 +2633,13 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
     if (!isExpanded) expand();
     else showActivePanel();
   });
-  window.notchAPI.onMockCall(() => {
-    currentState = 'call';
-    notch.setAttribute('data-state', 'call');
-    ignoreMouseLeave = true;
-    setTimeout(() => { ignoreMouseLeave = false; }, 300);
-    if (!isExpanded) expand();
-    else showActivePanel();
-  });
 }
 
-  if (window.notchAPI && window.notchAPI.onLiveMessage) {
+if (window.notchAPI && window.notchAPI.onLiveMessage) {
     window.notchAPI.onLiveMessage((data) => {
+      // Don't interrupt startup animation
+      if (currentState === 'startup') return;
+
       // Update DOM with real message data
       const nameEl = document.querySelectorAll('.msg-name');
       const textEl = document.querySelector('.msg-text');
@@ -2192,10 +2686,15 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
     
     function handleSendReply() {
       if (replyInput && replyInput.value.trim() !== '') {
+        const text = replyInput.value.trim();
         if (window.notchAPI && window.notchAPI.sendReply) {
-          window.notchAPI.sendReply(replyInput.value.trim());
+          window.notchAPI.sendReply(text);
         }
         replyInput.value = '';
+        if (window.msgCollapseTimeout) {
+          clearTimeout(window.msgCollapseTimeout);
+          window.msgCollapseTimeout = null;
+        }
         collapse();
         setTimeout(decideState, 350);
       }
@@ -2209,26 +2708,6 @@ if (window.notchAPI && window.notchAPI.onMockMessage) {
     if (replyBtn) {
       replyBtn.addEventListener('click', handleSendReply);
     }
-  }
-  
-  // Wire up the reply input box
-  const msgReplyInput = document.getElementById('msgReplyInput');
-  if (msgReplyInput) {
-    msgReplyInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && msgReplyInput.value.trim() !== '') {
-        const text = msgReplyInput.value.trim();
-        msgReplyInput.value = ''; // clear
-        
-        // Send to Electron
-        if (window.notchAPI && window.notchAPI.sendReply) {
-          window.notchAPI.sendReply(text);
-        }
-        
-        // Collapse the notch immediately after replying to feel responsive
-        collapse();
-        setTimeout(decideState, 350);
-      }
-    });
   }
 
 // ═══ APPLE BOOT CHIME ═══

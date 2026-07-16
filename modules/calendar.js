@@ -24,7 +24,7 @@ function loadConfig() {
 async function fetchEventsForToday(targetDate = null) {
   loadConfig();
   if (!iCalUrl || iCalUrl === 'PASTE_YOUR_ICAL_LINK_HERE') {
-    return { error: 'Please add your Google Calendar iCal link to calendar_config.json' };
+    return [];
   }
 
   try {
@@ -62,7 +62,7 @@ async function fetchEventsForToday(targetDate = null) {
     return dayEvents;
   } catch (err) {
     console.error('[Calendar Module] Error fetching events:', err);
-    return { error: 'Failed to fetch events from iCal link' };
+    return [];
   }
 }
 

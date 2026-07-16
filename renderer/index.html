@@ -147,8 +147,8 @@
 
             <div class="dash-sep" id="dashMusicSep" style="display: none;"></div>
 
-            <!-- Mid Column: Calendar + Unreads -->
-            <div class="dash-mid-col" style="display: flex; flex-direction: column; gap: 8px; width: 300px; margin-left: auto; margin-right: 12px; min-height: 0;">
+            <!-- Mid Column: Calendar -->
+            <div class="dash-mid-col" style="display: flex; flex-direction: column; gap: 8px; width: 280px; margin-left: auto; margin-right: 12px; min-height: 0;">
               <!-- Calendar Column -->
               <div class="dash-cal" style="width: 100% !important; margin: 0 !important;">
                 <div class="dash-cal-row">
@@ -168,20 +168,6 @@
                       <span id="dashFooterText">Nothing for today</span>
                     </div>
                   </div>
-                </div>
-              </div>
-              
-              <!-- Unreads Container -->
-              <div class="dash-unreads" id="dashUnreads" style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); overflow-y: auto; scrollbar-width: none; min-height: 0; max-height: 90px; box-sizing: border-box;">
-                <div class="dash-unreads-header" style="font-size: 9px; font-weight: 800; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.08em; padding-left: 2px; margin-bottom: 1px; display: flex; justify-content: space-between; align-items: center;">
-                  <span>Messages</span>
-                  <span style="cursor: pointer; color: #34c759; text-transform: none; font-weight: 600; font-size: 10px; padding-right: 4px;" onclick="if(window.notchAPI && window.notchAPI.openLoginWindow) window.notchAPI.openLoginWindow();">Open App</span>
-                </div>
-                <div id="unreadsEmptyState" style="margin: auto; color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 500; text-align: center; letter-spacing: -0.01em; padding: 8px 0;">No unread messages ✨</div>
-                <div id="unreadsListContainer" style="display: flex; flex-direction: column; gap: 6px; display: none;"></div>
-                <div id="dashLoginContainer" style="display: none; text-align: center; padding: 12px 0;">
-                  <button onclick="if(window.notchAPI && window.notchAPI.openLoginWindow) window.notchAPI.openLoginWindow();" style="padding: 8px 16px; border-radius: 16px; border: none; background: #34c759; color: #fff; font-weight: 600; cursor: pointer; font-size: 12px;">Login to Google Messages</button>
-                  <div style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.5); margin-top: 8px;">Click to open login window</div>
                 </div>
               </div>
             </div>
@@ -504,24 +490,6 @@
           </div>
         </div>
       </div>
-      <!-- ═══ PANEL: INCOMING CALL ═══ -->
-      <div class="panel panel-call" id="panelCall">
-        <div class="call-top">
-          <img src="https://i.pravatar.cc/150?img=11" alt="Avatar" class="call-avatar" />
-          <div class="call-info">
-            <span class="call-type">iPhone</span>
-            <span class="call-name">Tim Cook</span>
-          </div>
-          <div class="call-actions">
-            <button class="call-btn decline">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
-            </button>
-            <button class="call-btn accept">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-            </button>
-          </div>
-        </div>
-      </div>
 
       <!-- ═══ PANEL: MESSAGE MINI ═══ -->
       <div class="panel panel-msg-mini" id="panelMsgMini">
@@ -575,6 +543,15 @@
         <!-- Hello Lottie -->
         <div id="startupHello" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.5s ease; pointer-events: none;">
           <div id="lottieContainer" style="width: 100%; height: 100%; transform: scale(2.2); transform-origin: center;"></div>
+        </div>
+      </div>
+      
+      <!-- ═══ PANEL: UNREAD MESSAGES ═══ -->
+      <div class="panel panel-unreads" id="panelUnreads" style="display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; padding: 8px;">
+        <div style="width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 6px; overflow: hidden;">
+          <div style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.08em; padding-left: 2px;">Messages</div>
+          <div id="unreadsCompactTrack" style="display: flex; flex-direction: column; gap: 4px; overflow: hidden; flex: 1;"></div>
+          <div id="unreadsCompactEmpty" style="display: none; color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 500; text-align: center; padding: 8px 0;">No unread messages ✨</div>
         </div>
       </div>
       

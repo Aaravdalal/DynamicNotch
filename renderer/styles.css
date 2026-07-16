@@ -431,20 +431,107 @@ html, body {
 .dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
 /* calendar col - compact */
-.dash-cal{flex:none !important;width:300px !important;height: 75px; transition: height 0.3s cubic-bezier(0.25, 1, 0.5, 1); display:block; margin-left: auto !important; margin-right: 12px !important; overflow: hidden; position: relative;}
+.dash-cal{flex:none !important;width:280px !important;height: 60px; transition: height 0.3s cubic-bezier(0.25, 1, 0.5, 1); display:block; margin-left: auto !important; margin-right: 12px !important; overflow: hidden; position: relative;}
+
+/* ─── Unread messages carousel (beneath calendar) ─── */
+.unreads-carousel{display:flex;align-items:center;gap:4px;width:100%;flex:1;min-height:0;}
+.unreads-viewport{position:relative;flex:1;overflow:hidden;height:100%;border-radius:12px;min-width:0;}
+.unreads-track{display:flex;height:100%;transition:transform .35s cubic-bezier(0.16,1,0.3,1);will-change:transform;}
+.unread-card{
+  flex:0 0 100%;box-sizing:border-box;height:100%;min-width:0;
+  display:flex;align-items:center;gap:10px;padding:8px 10px;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+}
+.unread-card-avatar{width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;background:rgba(255,255,255,0.1);}
+.unread-card-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;}
+.unread-card-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+.unread-card-sender{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.unread-card-time{font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);flex-shrink:0;}
+.unread-card-text{font-size:11px;font-weight:500;color:rgba(255,255,255,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.unreads-nav{
+  flex-shrink:0;width:22px;height:22px;border-radius:50%;border:none;
+  background:rgba(255,255,255,0.1);color:#fff;font-size:14px;line-height:1;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+}
+.unreads-nav:hover{background:rgba(255,255,255,0.2);}
+.unreads-nav:disabled{opacity:0.25;cursor:default;}
+.unreads-dots{display:flex;gap:4px;justify-content:center;padding-top:2px;}
+.unreads-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,0.25);transition:background .2s ease,width .2s ease;}
+.unreads-dot.active{background:#34c759;width:12px;}
 .dash-cal.show-grid { height: 175px; }
 .notch[data-state="music"] .dash-cal, .notch[data-state="music"] .dash-sep {display: none !important;}
 .notch[data-state="bt-music"] .dash-cal, .notch[data-state="bt-music"] .dash-sep {display: none !important;}
-.dash-cal-row{display:flex;align-items:center;justify-content:center;gap:20px;width:100%}
-.dash-month-large{display:flex;align-items:center;justify-content:center;gap:4px;font-size:42px;font-weight:900;letter-spacing:-0.06em;color:#fff;line-height:1;opacity:0.95;}
-.cal-arrow{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.2s;font-size:14px;background:rgba(255,255,255,0.1);border-radius:50%;padding:4px}
+.dash-cal-row{display:flex;align-items:center;justify-content:center;gap:16px;width:100%}
+.dash-month-large{display:flex;align-items:center;justify-content:center;gap:6px;font-size:24px;font-weight:800;letter-spacing:-0.04em;color:#fff;line-height:1;opacity:0.95;}
+.cal-arrow{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.2s;font-size:12px;background:rgba(255,255,255,0.1);border-radius:50%;padding:3px}
 .cal-arrow:hover{opacity:1;background:rgba(255,255,255,0.2)}
-.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:6px;max-width:180px;}
+.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:4px;max-width:160px;}
+
+/* Compact unread messages panel */
+.panel-unreads { background: #000; }
+.unreads-compact-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.unreads-compact-card:hover {
+  background: rgba(255,255,255,0.1);
+}
+.unreads-compact-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.1);
+}
+.unreads-compact-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.unreads-compact-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.unreads-compact-sender {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unreads-compact-time {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.35);
+  flex-shrink: 0;
+}
+.unreads-compact-text {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .dash-cal-strip{
   display:flex;
   justify-content:flex-start;
-  gap:10px;
+  gap:8px;
   overflow-x:auto;
   scrollbar-width:none; /* Firefox */
   scroll-behavior: smooth;
@@ -453,6 +540,15 @@ html, body {
 }
 .dash-cal-strip::-webkit-scrollbar {
   display:none; /* Chrome/Safari */
+}
+
+.dash-cal-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+  font-weight: 500;
 }
 
 /* --- FILE TRAY --- */
@@ -854,27 +950,12 @@ html, body {
 .team-score { font-size: 16px; font-weight: 800; color: #fff; }
 .sports-status { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; text-align: center; }
 
-/* --- CALL AND MESSAGING (Apple Style) --- */
-.notch.expanded[data-state="call"]{width:360px;height:72px;border-radius:0 0 36px 36px}
+/* --- MESSAGING (Apple Style) --- */
 .notch.expanded[data-state="msg-mini"]{width:340px;height:64px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="msg-expanded"]{width:380px;height:160px;border-radius:0 0 36px 36px}
 
-.notch.expanded[data-state="call"] #panelCall,
 .notch.expanded[data-state="msg-mini"] #panelMsgMini,
 .notch.expanded[data-state="msg-expanded"] #panelMsgExpanded { display:flex; opacity:1; }
-
-/* Incoming Call */
-.panel-call { width:100%; height:100%; align-items:center; justify-content:center; padding: 0 16px; }
-.call-top { display:flex; align-items:center; width:100%; justify-content:space-between; }
-.call-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; flex-shrink:0; }
-.call-info { display:flex; flex-direction:column; margin-left:12px; flex:1; }
-.call-type { font-size:11px; color:rgba(255,255,255,0.6); font-weight:500; }
-.call-name { font-size:16px; color:#fff; font-weight:700; line-height:1.2; }
-.call-actions { display:flex; gap:12px; }
-.call-btn { width:44px; height:44px; border-radius:50%; border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform 0.2s; }
-.call-btn:hover { transform:scale(1.05); }
-.call-btn.decline { background:#ff3b30; }
-.call-btn.accept { background:#34c759; }
 
 /* Message Mini */
 .panel-msg-mini { width:100%; height:100%; align-items:center; justify-content:space-between; padding:0 16px; cursor:pointer; }

@@ -24,7 +24,7 @@ class GoogleCalendar {
 
     async getEvents(targetDateStr) {
         if (!this.config.icalUrl || this.config.icalUrl === 'PASTE_YOUR_ICAL_LINK_HERE') {
-            return [{ title: "Please add iCal Link in calendar-config.json", time: "Setup", color: "#ea4335" }];
+            return [];
         }
 
         try {
