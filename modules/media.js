@@ -124,21 +124,22 @@ class MediaMonitor extends EventEmitter {
                 } catch (e) {
                     console.error('fetchArt error:', e.message);
                 }
-                this.lastMediaInfo = {
-                    playing: true,
-                    paused: false,
-                    artist: artResult.channelName || detected.artist,
-                    track: detected.track,
-                    artUrl: artResult.url,
-                    duration: artResult.duration,
-                    videoId: artResult.videoId || null,
-                    source: detected.source
-                };
+        this.lastMediaInfo = {
+            playing: true,
+            paused: false,
+            artist: artResult.channelName || detected.artist,
+            track: detected.track,
+            artUrl: artResult.url,
+            duration: artResult.duration,
+            videoId: artResult.videoId || null,
+            album: artResult.album || '',
+            source: detected.source
+        };
                 this.emit('update', this.lastMediaInfo);
             }
         } else if (this.lastMediaInfo.playing && !this.clearTimeout) {
             this.clearTimeout = setTimeout(() => {
-                this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, source: '' };
+                this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, album: '', source: '' };
                 this.emit('update', this.lastMediaInfo);
                 this.clearTimeout = null;
             }, 5000);
@@ -197,7 +198,8 @@ class MediaMonitor extends EventEmitter {
                 if (json.results && json.results.length > 0) {
                     const artUrl = json.results[0].artworkUrl100.replace('100x100', '300x300');
                     const duration = json.results[0].trackTimeMillis || 0;
-                    const artInfo = { url: artUrl, duration };
+                    const album = json.results[0].collectionName || '';
+                    const artInfo = { url: artUrl, duration, album };
                     this.cachedArt[query] = artInfo;
                     return artInfo;
                 }
@@ -219,7 +221,8 @@ class MediaMonitor extends EventEmitter {
             if (json.results && json.results.length > 0) {
                 const artUrl = json.results[0].artworkUrl100.replace('100x100', '300x300');
                 const duration = json.results[0].trackTimeMillis || 0;
-                const artInfo = { url: artUrl, duration };
+                const album = json.results[0].collectionName || '';
+                const artInfo = { url: artUrl, duration, album };
                 this.cachedArt[query] = artInfo;
                 return artInfo;
             }

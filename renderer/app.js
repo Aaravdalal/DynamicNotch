@@ -251,14 +251,15 @@ function handleBluetoothUpdate(device) {
     btConnectedDevice = device;
     
     // Update collapsed bar battery if present
-    const battSpan = document.getElementById('cNoteBattery');
-    if (battSpan) {
+    const battDiv = document.getElementById('cNoteBattery');
+    const battPct = document.getElementById('cNoteBatteryPct');
+    if (battDiv && battPct) {
         if (device.battery > -1) {
-            battSpan.textContent = device.battery + '%';
-            battSpan.style.display = 'inline-block';
-            battSpan.classList.toggle('low', device.battery <= 20);
+            battPct.textContent = device.battery + '%';
+            battDiv.style.display = 'inline-flex';
+            battPct.classList.toggle('low', device.battery <= 20);
         } else {
-            battSpan.style.display = 'none';
+            battDiv.style.display = 'none';
         }
     }
 
@@ -267,8 +268,8 @@ function handleBluetoothUpdate(device) {
     }
   } else {
     btConnectedDevice = null;
-    const battSpan = document.getElementById('cNoteBattery');
-    if (battSpan) battSpan.style.display = 'none';
+    const battDiv = document.getElementById('cNoteBattery');
+    if (battDiv) battDiv.style.display = 'none';
     decideState();
   }
 }
@@ -2030,6 +2031,7 @@ async function fetchRecording() {
 /* ─── Init ─── */
   document.addEventListener('DOMContentLoaded', () => {
   setupInteractions();
+  setupQuickLaunch();
   updateClock();
   setInterval(updateClock, 1000);
   
@@ -2683,6 +2685,7 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
 
     const replyInput = document.getElementById('msgReplyInput');
     const replyBtn = document.getElementById('msgReplySendBtn');
+    const replyAttach = document.getElementById('msgReplyAttach');
     
     function handleSendReply() {
       if (replyInput && replyInput.value.trim() !== '') {
@@ -2700,6 +2703,21 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
       }
     }
 
+    if (replyAttach) {
+      replyAttach.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (window.notchAPI && window.notchAPI.selectAttachment) {
+          const files = await window.notchAPI.selectAttachment();
+          if (files && files.length > 0) {
+            console.log('[App] Selected attachment:', files);
+            if (window.notchAPI && window.notchAPI.sendReply) {
+              window.notchAPI.sendReply(files[0]);
+            }
+          }
+        }
+      });
+    }
+
     if (replyInput) {
       replyInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') handleSendReply();
@@ -2708,6 +2726,238 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     if (replyBtn) {
       replyBtn.addEventListener('click', handleSendReply);
     }
+  }
+
+  /* ─── Quick Launch ─── */
+  let quickLaunchItems = [];
+
+  function renderQuickLaunch() {
+    const squares = document.querySelectorAll('.ql-square');
+    squares.forEach((sq, idx) => {
+      const item = quickLaunchItems[idx];
+      if (item && item.icon) {
+        sq.innerHTML = `<img src="${item.icon}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px; pointer-events: none;" />`;
+        sq.dataset.appPath = item.path || '';
+        sq.dataset.hasApp = 'true';
+      } else {
+        sq.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        sq.dataset.appPath = '';
+        sq.dataset.hasApp = 'false';
+      }
+    });
+  }
+
+  async function loadQuickLaunch() {
+    if (window.notchAPI && window.notchAPI.loadQuickLaunch) {
+      quickLaunchItems = await window.notchAPI.loadQuickLaunch();
+      renderQuickLaunch();
+    }
+  }
+
+  async function saveQuickLaunch() {
+    if (window.notchAPI && window.notchAPI.saveQuickLaunch) {
+      await window.notchAPI.saveQuickLaunch(quickLaunchItems);
+    }
+  }
+
+  function resetQuickLaunchSquares() {
+    quickLaunchItems = [];
+    renderQuickLaunch();
+  }
+
+  let appPickerModal = null;
+
+  async function showAppPicker(targetIndex) {
+    if (appPickerModal) return;
+    
+    let apps = [];
+    if (window.notchAPI && window.notchAPI.getInstalledApps) {
+      apps = await window.notchAPI.getInstalledApps();
+    }
+    
+    if (!apps.length) return;
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.id = 'appPickerModal';
+    modal.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(12px);
+    `;
+    
+    const container = document.createElement('div');
+    container.style.cssText = `
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-radius: 20px;
+      padding: 20px;
+      max-width: 90vw;
+      max-height: 80vh;
+      width: 520px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.1);
+    `;
+    
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    `;
+    header.innerHTML = `<span style="color:#fff;font-weight:600;font-size:15px;letter-spacing:0.3px;">Select an App</span><button id="closeAppPicker" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:22px;cursor:pointer;padding:4px 8px;line-height:1;border-radius:8px;transition:all 0.15s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.color='rgba(255,255,255,0.6)';this.style.background='none'">×</button>`;
+    
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search apps...';
+    searchInput.style.cssText = `
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.3);
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    `;
+    searchInput.addEventListener('focus', () => {
+      searchInput.style.borderColor = 'rgba(79,168,255,0.5)';
+      searchInput.style.boxShadow = '0 0 0 3px rgba(79,168,255,0.2)';
+    });
+    searchInput.addEventListener('blur', () => {
+      searchInput.style.borderColor = 'rgba(255,255,255,0.1)';
+      searchInput.style.boxShadow = 'none';
+    });
+    
+    const list = document.createElement('div');
+    list.id = 'appPickerList';
+    list.style.cssText = `
+      max-height: 55vh;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+      padding-right: 4px;
+    `;
+    
+    function renderApps(filter = '') {
+      list.innerHTML = '';
+      const filtered = apps.filter(a => 
+        a.name.toLowerCase().includes(filter.toLowerCase())
+      ).slice(0, 120);
+      
+      filtered.forEach(app => {
+        const item = document.createElement('div');
+        item.style.cssText = `
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 8px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.04);
+          cursor: pointer;
+          transition: all 0.15s ease;
+          border: 1px solid rgba(255,255,255,0.05);
+        `;
+        item.innerHTML = `
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <img src="${app.icon || ''}" alt="" style="width:32px;height:32px;border-radius:8px;object-fit:contain;${!app.icon ? 'display:none' : ''}" onerror="this.style.display='none';this.parentElement.style.background='rgba(255,255,255,0.08)'">
+          </div>
+          <span style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.9);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;line-height:1.2;">${app.name}</span>
+        `;
+        item.addEventListener('mouseenter', () => {
+          item.style.background = 'rgba(255,255,255,0.1)';
+          item.style.borderColor = 'rgba(79,168,255,0.3)';
+        });
+        item.addEventListener('mouseleave', () => {
+          item.style.background = 'rgba(255,255,255,0.04)';
+          item.style.borderColor = 'rgba(255,255,255,0.05)';
+        });
+        item.addEventListener('click', () => {
+          closePicker();
+          selectApp(app);
+        });
+        list.appendChild(item);
+      });
+    }
+    
+    function closePicker() {
+      if (appPickerModal) {
+        appPickerModal.remove();
+        appPickerModal = null;
+      }
+    }
+    
+    function selectApp(app) {
+      if (!app.path) return;
+      let iconDataUrl = app.icon;
+      if (!iconDataUrl && window.notchAPI.getAppIcon) {
+        window.notchAPI.getAppIcon(app.path).then(icon => {
+          if (icon) {
+            quickLaunchItems[targetIndex] = { path: app.path, icon };
+            saveQuickLaunch();
+            renderQuickLaunch();
+          }
+        });
+      } else {
+        quickLaunchItems[targetIndex] = { path: app.path, icon: iconDataUrl };
+        saveQuickLaunch();
+        renderQuickLaunch();
+      }
+    }
+    
+    searchInput.addEventListener('input', (e) => renderApps(e.target.value));
+    header.querySelector('#closeAppPicker').addEventListener('click', closePicker);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closePicker(); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { closePicker(); document.removeEventListener('keydown', esc); } });
+    
+    container.append(header, searchInput, list);
+    modal.appendChild(container);
+    document.body.appendChild(modal);
+    appPickerModal = modal;
+    searchInput.focus();
+    renderApps();
+  }
+
+  async function handleQuickLaunchClick(sq) {
+    const hasApp = sq.dataset.hasApp === 'true';
+    const appPath = sq.dataset.appPath;
+    const index = parseInt(sq.dataset.index, 10);
+
+    if (hasApp && appPath) {
+      if (window.notchAPI && window.notchAPI.launchApp) {
+        await window.notchAPI.launchApp(appPath);
+      }
+      return;
+    }
+
+    // Open visual app picker instead of file dialog
+    await showAppPicker(index);
+  }
+
+  function setupQuickLaunch() {
+    const squares = document.querySelectorAll('.ql-square');
+    squares.forEach(sq => {
+      sq.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleQuickLaunchClick(sq);
+      });
+    });
+
+    loadQuickLaunch();
   }
 
 // ═══ APPLE BOOT CHIME ═══

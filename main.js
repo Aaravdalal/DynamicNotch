@@ -14,7 +14,7 @@ const { initFileTray } = require('./modules/file-tray');
 const { startExternalTimersMonitor } = require('./modules/external-timers');
 const { startDownloadsMonitor } = require('./modules/downloads');
 const { startHeartbeat } = require('./modules/heartbeat');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 // ─── Global crash prevention ───
 process.on('uncaughtException', (err) => {
@@ -472,6 +472,199 @@ ipcMain.handle('select-profile-image', async () => {
     }
   } catch (e) {}
   return null;
+});
+
+ipcMain.handle('select-attachment', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Attachment',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths;
+    }
+  } catch (e) {}
+  return [];
+});
+
+const quickLaunchStore = path.join(app.getPath('userData'), 'quick-launch.json');
+
+function readQuickLaunch() {
+  try {
+    if (fs.existsSync(quickLaunchStore)) {
+      return JSON.parse(fs.readFileSync(quickLaunchStore, 'utf8'));
+    }
+  } catch (e) {}
+  return [];
+}
+
+function writeQuickLaunch(items) {
+  try {
+    fs.writeFileSync(quickLaunchStore, JSON.stringify(items, null, 2));
+  } catch (e) {}
+}
+
+ipcMain.handle('select-app', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Application',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Applications', extensions: ['exe', 'lnk', 'appref-ms', 'bat', 'cmd', 'ps1'] }
+      ]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      let appPath = result.filePaths[0];
+      try {
+        const shortcut = shell.readShortcutLink(appPath);
+        if (shortcut.target) appPath = shortcut.target;
+      } catch (e) {}
+      return appPath;
+    }
+  } catch (e) {}
+  return null;
+});
+
+ipcMain.handle('get-app-icon', async (_, appPath) => {
+  try {
+    const icon = await app.getFileIcon(appPath, { size: 'large' });
+    return icon.toDataURL();
+  } catch (e) {
+    console.error('[QuickLaunch] Failed to get icon for', appPath, e);
+  }
+  return null;
+});
+
+ipcMain.handle('launch-app', async (_, appPath) => {
+  try {
+    await shell.openPath(appPath);
+    return true;
+  } catch (e) {
+    console.error('[QuickLaunch] Failed to launch', appPath, e);
+  }
+  return false;
+});
+
+ipcMain.handle('load-quick-launch', async () => {
+  return readQuickLaunch();
+});
+
+ipcMain.handle('save-quick-launch', async (_, items) => {
+  writeQuickLaunch(items);
+  return true;
+});
+
+ipcMain.handle('get-installed-apps', async () => {
+  try {
+    const psScript = `
+$apps = @()
+
+# 64-bit uninstall key
+$uninstall64 = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
+# 32-bit uninstall key on 64-bit Windows
+$uninstall32 = "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
+# Current user uninstall key
+$uninstallCU = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
+
+$paths = @($uninstall64, $uninstall32, $uninstallCU)
+
+foreach ($path in $paths) {
+  Get-ItemProperty $path | Where-Object { $_.DisplayName -and $_.DisplayIcon -and $_.SystemComponent -ne 1 } | ForEach-Object {
+    $name = $_.DisplayName
+    $iconPath = $_.DisplayIcon
+    $exePath = $_.InstallLocation + "\\" + $_.DisplayName + ".exe"
+    
+    # Try to find actual executable
+    $actualPath = $null
+    if ($_.UninstallString) {
+      if ($_.UninstallString -match '"([^"]+)"') {
+        $actualPath = $matches[1]
+      }
+    }
+    
+    # If no uninstall string path, try DisplayIcon
+    if (-not $actualPath -and $iconPath) {
+      if ($iconPath -match '"([^"]+)"') {
+        $actualPath = $matches[1]
+      } else {
+        $actualPath = $iconPath
+      }
+    }
+    
+    # Clean up path
+    if ($actualPath) {
+      $actualPath = $actualPath.Trim('"')
+      if (Test-Path $actualPath) {
+        # If it's an .lnk, resolve it
+        if ($actualPath -like "*.lnk") {
+          try {
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcut = $shell.CreateShortcut($actualPath)
+            $actualPath = $shortcut.TargetPath
+          } catch {}
+        }
+      }
+    }
+    
+    $apps += @{
+      name = $name
+      path = $actualPath
+      icon = $iconPath
+    }
+  }
+}
+
+# Also get Start Menu shortcuts
+$startMenuPaths = @(
+  "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\*",
+  "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\*"
+)
+
+foreach ($smPath in $startMenuPaths) {
+  Get-ChildItem $smPath -Recurse -Filter "*.lnk" | ForEach-Object {
+    try {
+      $shell = New-Object -ComObject WScript.Shell
+      $shortcut = $shell.CreateShortcut($_.FullName)
+      $target = $shortcut.TargetPath
+      if ($target -and (Test-Path $target)) {
+        $apps += @{
+          name = $_.BaseName
+          path = $target
+          icon = $target
+        }
+      }
+    } catch {}
+  }
+}
+
+# Deduplicate by path
+$unique = $apps | Group-Object path | ForEach-Object { $_.Group[0] }
+$unique | Select-Object name, path, icon | ConvertTo-Json -Depth 3
+`
+
+    const { stdout } = await execFile('powershell.exe', ['-NoProfile', '-Command', psScript], { timeout: 15000, windowsHide: true });
+    if (stdout) {
+      const apps = JSON.parse(stdout);
+      // Fetch icons for each app
+      const appsWithIcons = await Promise.all(apps.map(async (app) => {
+        let iconDataUrl = null;
+        if (app.path) {
+          try {
+            const icon = await app.getFileIcon(app.path, { size: 'large' });
+            iconDataUrl = icon.toDataURL();
+          } catch (e) {}
+        }
+        return { name: app.name, path: app.path, icon: iconDataUrl };
+      }));
+      return appsWithIcons.filter(a => a.path);
+    }
+  } catch (e) {
+    console.error('[QuickLaunch] Failed to get installed apps:', e);
+  }
+  return [];
 });
 
   ipcMain.on('set-ignore-mouse', (_, ignore) => {

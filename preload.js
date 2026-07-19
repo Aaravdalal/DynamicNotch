@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('notchAPI', {
   loadProfileImage: () => ipcRenderer.invoke('load-profile-image'),
   openCalendar: () => ipcRenderer.invoke('open-calendar'),
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
+  selectAttachment: () => ipcRenderer.invoke('select-attachment'),
   getYoutubeStream: (id) => ipcRenderer.invoke('get-youtube-stream', id),
   fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
   simulateWinH: () => ipcRenderer.invoke('simulate-win-h'),
@@ -79,5 +80,12 @@ contextBridge.exposeInMainWorld('notchAPI', {
   openQuickShare: () => ipcRenderer.invoke('open-quickshare'),
   shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),
   onShareInitiated: (callback) => ipcRenderer.on('share-initiated', (event, paths) => callback(paths)),
-  openLoginWindow: () => ipcRenderer.send('open-login-window')
+  openLoginWindow: () => ipcRenderer.send('open-login-window'),
+
+  selectApp: () => ipcRenderer.invoke('select-app'),
+  getAppIcon: (appPath) => ipcRenderer.invoke('get-app-icon', appPath),
+launchApp: (appPath) => ipcRenderer.invoke('launch-app', appPath),
+  loadQuickLaunch: () => ipcRenderer.invoke('load-quick-launch'),
+  saveQuickLaunch: (items) => ipcRenderer.invoke('save-quick-launch', items),
+  getInstalledApps: () => ipcRenderer.invoke('get-installed-apps')
 });
