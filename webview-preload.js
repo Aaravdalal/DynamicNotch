@@ -26,7 +26,12 @@ window.addEventListener('message', (event) => {
   }
 });
 
-ipcRenderer.on('hidden-send-reply', (event, text) => {
+ipcRenderer.on('hidden-send-reply', (event, payload) => {
+  const data = typeof payload === 'string' ? { text: payload } : (payload || {});
+  const text = data.text || '';
+  const sender = (data.sender || '').trim().toLowerCase();
+  if (!text) return; // Attachment-only replies aren't wired up yet.
+
   // Find a clickable "send" control across buttons and role=button elements.
   const findSendBtn = () => {
     const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
@@ -54,31 +59,59 @@ ipcRenderer.on('hidden-send-reply', (event, text) => {
     }, 350);
   };
 
+  const insertAndSend = (input) => {
+    if (!input) {
+      console.warn('[DynamicNotch] No reply input field found on', window.location.hostname);
+      return;
+    }
+    input.focus();
+    document.execCommand('insertText', false, text);
+    // Let Angular/Polymer/React know the value changed so the send button enables.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    triggerSend(input);
+  };
+
   if (window.location.hostname.includes('messages.google.com')) {
-    // Select the most recent conversation in the sidebar first.
-    const firstConv = document.querySelector('mws-conversation-list-item');
-    if (firstConv) {
-      const clickable = firstConv.querySelector('a, button, [role="button"]') || firstConv;
+    // Conversation list markup has changed across Google Messages
+    // releases, so try several selectors rather than one hard-coded tag.
+    const convSelectors = [
+      'mws-conversation-list-item',
+      'mws-conversation-list-item-content',
+      '[data-testid="conversation-list-item"]',
+      'a[href^="/web/conversations/"]'
+    ];
+    let convs = [];
+    for (const sel of convSelectors) {
+      convs = Array.from(document.querySelectorAll(sel));
+      if (convs.length) break;
+    }
+
+    let target = convs[0]; // Fall back to the most recent conversation.
+    if (sender && convs.length > 1) {
+      const match = convs.find(el => (el.textContent || '').toLowerCase().includes(sender));
+      if (match) target = match;
+    }
+
+    if (target) {
+      const clickable = target.querySelector('a, button, [role="button"]') || target;
       clickable.click();
     }
 
     setTimeout(() => {
-      const input = document.querySelector('textarea, mws-autosize-textarea');
-      if (input) {
-        input.focus();
-        document.execCommand('insertText', false, text);
-        // Let Angular/Polymer know the value changed so the send button enables.
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        triggerSend(input);
-      }
+      const input = document.querySelector('textarea, mws-autosize-textarea textarea, mws-autosize-textarea, [contenteditable="true"][aria-label*="message" i]');
+      insertAndSend(input);
     }, 400);
   } else if (window.location.hostname.includes('chat.google.com')) {
-    const input = document.querySelector('div[contenteditable="true"]');
-    if (input) {
-      input.focus();
-      document.execCommand('insertText', false, text);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      triggerSend(input);
+    // If we know who this is from, try to open their DM/space first.
+    if (sender) {
+      const rows = Array.from(document.querySelectorAll('[role="listitem"], [role="treeitem"]'));
+      const match = rows.find(el => (el.textContent || '').toLowerCase().includes(sender));
+      if (match) match.click();
     }
+
+    setTimeout(() => {
+      const input = document.querySelector('div[contenteditable="true"][aria-label*="message" i], div[contenteditable="true"]');
+      insertAndSend(input);
+    }, sender ? 400 : 0);
   }
 });

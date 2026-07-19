@@ -58,7 +58,7 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onQRUpdate: (callback) => {
     ipcRenderer.on('qr-update', (event, data) => callback(data));
   },
-  sendReply: (text) => ipcRenderer.send('send-reply', text),
+  sendReply: (payload) => ipcRenderer.send('send-reply', payload),
   onMockMessage: (callback) => {
     ipcRenderer.on('mock-message', () => callback());
   },
@@ -85,7 +85,9 @@ contextBridge.exposeInMainWorld('notchAPI', {
   selectApp: () => ipcRenderer.invoke('select-app'),
   getAppIcon: (appPath) => ipcRenderer.invoke('get-app-icon', appPath),
 launchApp: (appPath) => ipcRenderer.invoke('launch-app', appPath),
+  focusOrLaunchApp: (appPath) => ipcRenderer.invoke('focus-or-launch-app', appPath),
   loadQuickLaunch: () => ipcRenderer.invoke('load-quick-launch'),
   saveQuickLaunch: (items) => ipcRenderer.invoke('save-quick-launch', items),
-  getInstalledApps: () => ipcRenderer.invoke('get-installed-apps')
+  getInstalledApps: () => ipcRenderer.invoke('get-installed-apps'),
+  getForegroundApp: () => ipcRenderer.invoke('get-foreground-app')
 });

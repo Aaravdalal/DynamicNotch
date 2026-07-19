@@ -14,7 +14,10 @@ const { initFileTray } = require('./modules/file-tray');
 const { startExternalTimersMonitor } = require('./modules/external-timers');
 const { startDownloadsMonitor } = require('./modules/downloads');
 const { startHeartbeat } = require('./modules/heartbeat');
+const { startForegroundMonitor, getLastForegroundApp } = require('./modules/foreground-app');
 const { spawn, execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 
 // ─── Global crash prevention ───
 process.on('uncaughtException', (err) => {
@@ -303,8 +306,9 @@ function createTray() {
   tray = new Tray(icon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Notch', click: () => mainWindow && mainWindow.show() },
-    { label: 'Login to Google Messages', click: () => hiddenMessages && hiddenMessages.show() },
+    { label: 'Login to Google Messages', click: () => showMessagesLogin() },
     { label: 'Login to Gchat', click: () => hiddenGchat && hiddenGchat.show() },
+    { label: 'Reset Messages Login (blank QR fix)', click: () => resetMessagesSession() },
     { type: 'separator' },
     { label: 'Open Saved Files', click: () => {
         const fileTrayPath = path.join(app.getPath('userData'), 'file-tray');
@@ -539,6 +543,28 @@ ipcMain.handle('get-app-icon', async (_, appPath) => {
 });
 
 ipcMain.handle('launch-app', async (_, appPath) => {
+  try {
+    await shell.openPath(appPath);
+    return true;
+  } catch (e) {
+    console.error('[QuickLaunch] Failed to launch', appPath, e);
+  }
+  return false;
+});
+
+ipcMain.handle('get-foreground-app', async () => {
+  return getLastForegroundApp();
+});
+
+// Brings an already-running instance of appPath to the front instead of
+// spawning a duplicate, so Quick Start picks up "where you left off".
+ipcMain.handle('focus-or-launch-app', async (_, appPath) => {
+  try {
+    const scriptPath = path.join(__dirname, 'scripts', 'focus-or-launch.ps1');
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Path', appPath], { timeout: 5000, windowsHide: true });
+    if (stdout && stdout.includes('FOCUSED')) return true;
+  } catch (e) {}
+
   try {
     await shell.openPath(appPath);
     return true;
@@ -819,13 +845,68 @@ ipcMain.on('hidden-live-message', (event, data) => {
   safeSend('live-message', data);
 });
 
-ipcMain.on('send-reply', (event, text) => {
-  console.log('[HiddenMessage] Sending reply:', text);
+// Surfaces the hidden Google Messages window so the user can scan the QR
+// pairing code. Shared by the tray menu, the "open-login-window" IPC call,
+// and the reply pipeline's not-signed-in fallback below.
+function showMessagesLogin() {
+  if (!hiddenMessages) return;
+  hiddenMessages.setOpacity(1);
+  hiddenMessages.show();
+  hiddenMessages.setSkipTaskbar(false);
+  hiddenMessages.focus();
+
+  // The window is created hidden (show:false), and Chromium skips painting the
+  // QR <canvas> while a window is occluded — so it can come up blank. Now that
+  // the window is actually visible, reload the auth page so Google regenerates
+  // and paints a fresh QR. Only do this when we're not already signed in.
+  try {
+    const url = hiddenMessages.webContents.getURL();
+    if (!url || url.includes('/authentication')) {
+      hiddenMessages.webContents.reload();
+    }
+  } catch (e) {}
+
+  hiddenMessages.removeAllListeners('close');
+  hiddenMessages.on('close', (e) => {
+    e.preventDefault();
+    hiddenMessages.hide();
+    hiddenMessages.setSkipTaskbar(true);
+    hiddenMessages.setOpacity(0);
+  });
+}
+
+// Nuclear option for a genuinely corrupt persisted session: wipe the
+// messenger partition's storage, then reopen login with a clean slate.
+async function resetMessagesSession() {
+  if (!hiddenMessages || hiddenMessages.isDestroyed()) return;
+  try {
+    await hiddenMessages.webContents.session.clearStorageData();
+  } catch (e) {
+    console.error('[Messages] Failed to clear session:', e.message);
+  }
+  try {
+    await hiddenMessages.loadURL('https://messages.google.com/web/authentication');
+  } catch (e) {}
+  showMessagesLogin();
+}
+
+ipcMain.on('send-reply', (event, payload) => {
+  const data = typeof payload === 'string' ? { text: payload } : (payload || {});
+  console.log('[HiddenMessage] Sending reply:', data);
+
+  const notSignedIn = hiddenMessages && !hiddenMessages.isDestroyed() &&
+    hiddenMessages.webContents.getURL().includes('/authentication');
+  if (notSignedIn) {
+    console.log('[HiddenMessage] Not signed into Google Messages yet — opening login.');
+    showMessagesLogin();
+    return;
+  }
+
   if (hiddenMessages && !hiddenMessages.isDestroyed()) {
-    hiddenMessages.webContents.send('hidden-send-reply', text);
+    hiddenMessages.webContents.send('hidden-send-reply', data);
   }
   if (hiddenGchat && !hiddenGchat.isDestroyed()) {
-    hiddenGchat.webContents.send('hidden-send-reply', text);
+    hiddenGchat.webContents.send('hidden-send-reply', data);
   }
 });
 
@@ -852,8 +933,9 @@ app.whenReady().then(() => {
   });
   createWindow();
   createTray();
-  
+
   startHeartbeat();
+  startForegroundMonitor(process.pid);
 
   globalShortcut.register('CommandOrControl+M', () => {
     safeSend('mock-message');
@@ -879,22 +961,9 @@ app.whenReady().then(() => {
   onMediaUpdate((data) => {
     safeSend('media-update', data);
   });
-  
+
   ipcMain.on('open-login-window', () => {
-    if (hiddenMessages) {
-      hiddenMessages.setOpacity(1);
-      hiddenMessages.show();
-      hiddenMessages.setSkipTaskbar(false);
-      hiddenMessages.focus();
-      
-      hiddenMessages.removeAllListeners('close');
-      hiddenMessages.on('close', (e) => {
-        e.preventDefault();
-        hiddenMessages.hide();
-        hiddenMessages.setSkipTaskbar(true);
-        hiddenMessages.setOpacity(0);
-      });
-    }
+    showMessagesLogin();
   });
 });
 

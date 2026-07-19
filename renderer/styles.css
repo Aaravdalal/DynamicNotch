@@ -468,65 +468,42 @@ html, body {
 .cal-arrow:hover{opacity:1;background:rgba(255,255,255,0.2)}
 .dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:4px;max-width:160px;}
 
-/* Compact unread messages panel */
 .panel-unreads { background: #000; }
-.unreads-compact-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.15s ease;
+.unreads-carousel.clickable .unread-card{cursor:pointer;}
+
+/* Quick Start launcher */
+.ql-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.08em;padding:0 2px;margin:-16px 0 4px;}
+.quick-launch-grid{
+  width:100%;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:#fff;
+  border-radius:16px;padding:10px;box-sizing:border-box;
 }
-.unreads-compact-card:hover {
-  background: rgba(255,255,255,0.1);
+.ql-square{
+  width:38px;height:38px;border-radius:11px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;
+  background:#000;border:none;
+  color:#fff;
+  transition:background .15s ease,transform .15s ease,box-shadow .15s ease;
 }
-.unreads-compact-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: rgba(255,255,255,0.1);
+.ql-square:hover{background:#1a1a1a;transform:translateY(-1px);}
+.ql-square:active{transform:translateY(0) scale(0.94);}
+.ql-square[data-has-app="true"]{border:none;background:transparent;box-shadow:none;}
+.ql-square[data-has-app="true"]{overflow:visible;}
+.ql-square[data-has-app="true"]:hover{box-shadow:none;transform:translateY(-1px);}
+.ql-delete{
+  position:absolute;top:-6px;right:-6px;width:15px;height:15px;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  border:none;border-radius:50%;background:#ff3b30;color:#fff;cursor:pointer;
+  opacity:0;transform:scale(0.6);pointer-events:none;
+  transition:opacity .12s ease,transform .12s ease,background .12s ease;
+  box-shadow:0 1px 3px rgba(0,0,0,0.45);z-index:2;
 }
-.unreads-compact-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.unreads-compact-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 6px;
-}
-.unreads-compact-sender {
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.unreads-compact-time {
-  font-size: 9px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.35);
-  flex-shrink: 0;
-}
-.unreads-compact-text {
-  font-size: 10px;
-  font-weight: 500;
-  color: rgba(255,255,255,0.6);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.ql-square[data-has-app="true"]:hover .ql-delete{opacity:1;transform:scale(1);pointer-events:auto;}
+.ql-delete:hover{background:#ff5b52;}
+.ql-delete:active{transform:scale(0.85);}
+.ql-square img{width:100%;height:100%;object-fit:cover;border-radius:9px;pointer-events:none;}
+.ql-square.ql-pinning{animation:ql-pulse 0.9s ease-in-out infinite;}
+@keyframes ql-pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
 
 .dash-cal-strip{
   display:flex;
@@ -918,6 +895,27 @@ html, body {
 }
 .notch[data-state="music"] .dash-widgets, .notch[data-state="bt-music"] .dash-widgets {
  display: none !important;
+}
+
+/* ─── Music dashboard (opened via the mini-player caret) ───
+   Same wide/short shape as the idle dashboard — NOT the tall 460 forced-full.
+   Music player sits on the left where the calendar + quick start normally are,
+   with the search bar + weather widgets beside it on the right. */
+.notch.expanded.forced-full[data-state="music"],
+.notch.expanded.forced-full[data-state="bt-music"] {
+  width: 820px !important;
+  height: 195px !important;
+  border-radius: 0 0 24px 24px !important;
+}
+/* Re-show the widgets column the plain music-state rule hides above. */
+.notch.forced-full[data-state="music"] .dash-widgets,
+.notch.forced-full[data-state="bt-music"] .dash-widgets {
+  display: flex !important;
+}
+/* The music player replaces the calendar + quick start entirely. */
+.notch.forced-full[data-state="music"] .dash-mid-col,
+.notch.forced-full[data-state="bt-music"] .dash-mid-col {
+  display: none !important;
 }
 
 /* Timer and Recording UI Styles */

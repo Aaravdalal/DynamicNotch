@@ -4,7 +4,7 @@
   "description": "Dynamic Island-style notch overlay for Windows",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "build": "electron-builder"
   },
   "dependencies": {

@@ -177,21 +177,22 @@
                  </div>
                 </div>
 
-                <div id="quickLaunchGrid" style="width: 100%; flex: 1; background: linear-gradient(145deg, #fafafa 0%, #f0f0f0 100%); border-radius: 16px; margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 12px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05), 0 1px 0 rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.04);">
-                  <div class="ql-square" id="qlSquare0" data-index="0" style="width: 36px; height: 36px; border-radius: 10px; border: 2px dashed rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.7); transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.03);" onmouseover="this.style.borderColor='rgba(0,0,0,0.25)';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.12)';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <div class="ql-label">Quick Start</div>
+                <div id="quickLaunchGrid" class="quick-launch-grid">
+                  <div class="ql-square" id="qlSquare0" data-index="0" data-has-app="false" title="Click to pin the app you're currently on">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </div>
-                  <div class="ql-square" id="qlSquare1" data-index="1" style="width: 36px; height: 36px; border-radius: 10px; border: 2px dashed rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.7); transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.03);" onmouseover="this.style.borderColor='rgba(0,0,0,0.25)';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.12)';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <div class="ql-square" id="qlSquare1" data-index="1" data-has-app="false" title="Click to pin the app you're currently on">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </div>
-                  <div class="ql-square" id="qlSquare2" data-index="2" style="width: 36px; height: 36px; border-radius: 10px; border: 2px dashed rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.7); transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.03);" onmouseover="this.style.borderColor='rgba(0,0,0,0.25)';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.12)';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <div class="ql-square" id="qlSquare2" data-index="2" data-has-app="false" title="Click to pin the app you're currently on">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </div>
-                  <div class="ql-square" id="qlSquare3" data-index="3" style="width: 36px; height: 36px; border-radius: 10px; border: 2px dashed rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.7); transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.03);" onmouseover="this.style.borderColor='rgba(0,0,0,0.25)';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.12)';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <div class="ql-square" id="qlSquare3" data-index="3" data-has-app="false" title="Click to pin the app you're currently on">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </div>
-                  <div class="ql-square" id="qlSquare4" data-index="4" style="width: 36px; height: 36px; border-radius: 10px; border: 2px dashed rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.7); transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.03);" onmouseover="this.style.borderColor='rgba(0,0,0,0.25)';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.12)';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <div class="ql-square" id="qlSquare4" data-index="4" data-has-app="false" title="Click to pin the app you're currently on">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </div>
                 </div>
               </div>
@@ -588,11 +589,18 @@
       </div>
       
       <!-- ═══ PANEL: UNREAD MESSAGES ═══ -->
-      <div class="panel panel-unreads" id="panelUnreads" style="display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; padding: 8px;">
-        <div style="width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 6px; overflow: hidden;">
-          <div style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.08em; padding-left: 2px;">Messages</div>
-          <div id="unreadsCompactTrack" style="display: flex; flex-direction: column; gap: 4px; overflow: hidden; flex: 1;"></div>
-          <div id="unreadsCompactEmpty" style="display: none; color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 500; text-align: center; padding: 8px 0;">No unread messages ✨</div>
+      <div class="panel panel-unreads" id="panelUnreads" style="display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; padding: 10px;">
+        <div style="width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; height: 100%;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 2px;">
+            <span style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.08em;">Messages</span>
+            <div class="unreads-dots" id="unreadsDots"></div>
+          </div>
+          <div class="unreads-carousel clickable" id="unreadsCarousel">
+            <div class="unreads-viewport" id="unreadsViewport">
+              <div class="unreads-track" id="unreadsTrack"></div>
+            </div>
+          </div>
+          <div id="unreadsEmptyState" style="display: none; color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 500; text-align: center; padding: 8px 0;">No unread messages ✨</div>
         </div>
       </div>
       

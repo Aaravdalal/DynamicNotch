@@ -353,16 +353,24 @@ function setupInteractions() {
 // ─── Hover detection (robust, mousemove-driven) ───
   // The window is created click-through (setIgnoreMouseEvents(true, {forward:true}))
   // so the page still receives mousemove.
+// Schedules an expand on hover. Idempotent — safe to call on every mousemove
+// while the cursor sits over the collapsed notch, so expansion never depends
+// on catching a single "entered" edge event.
+function scheduleExpand() {
+  if (isExpanded || reenterGuard || hoverTimeout) return;
+  hoverTimeout = setTimeout(() => { hoverTimeout = null; expand(); }, 30);
+}
+
 function handleNotchEnter() {
   // Brief lockout after a collapse so the notch doesn't instantly re-expand
   // while the pointer is still sitting over the (now smaller) collapsed pill.
   if (reenterGuard) return;
   isMouseOverNotch = true;
   window.notchAPI.setIgnoreMouse(false);
-  
-  if (window.msgCollapseTimeout) { 
-    clearTimeout(window.msgCollapseTimeout); 
-    window.msgCollapseTimeout = null; 
+
+  if (window.msgCollapseTimeout) {
+    clearTimeout(window.msgCollapseTimeout);
+    window.msgCollapseTimeout = null;
   }
   if (currentState === 'msg-mini') {
     wasMsgMiniBeforeExpand = true;
@@ -376,19 +384,21 @@ function handleNotchEnter() {
     return;
   }
 
-  if (!isExpanded) hoverTimeout = setTimeout(() => {
-    expand();
-  }, 30);
+  scheduleExpand();
 }
 
 function handleNotchLeave() {
   const searchInput = document.getElementById('dashSearchInput');
   if (searchInput && document.activeElement === searchInput) return;
+  // Keep the notch open while the user is actively typing a reply, even if
+  // the mouse drifts off the notch.
+  const replyInput = document.getElementById('msgReplyInput');
+  if (replyInput && document.activeElement === replyInput) return;
   if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
   if (currentState === 'file-tray' && isDragActive) return;
   if (currentState === 'recording') return;
   if (ignoreMouseLeave) return;
-  
+
   if (isExpanded) {
     // If we expanded from msg-mini state, return to msg-mini instead of idle
     if (currentState === 'msg-expanded' && wasMsgMiniBeforeExpand) {
@@ -448,16 +458,12 @@ function isMouseOverNotchBounds(e, forLeave) {
     }
   });
 
-  // Mouseleave on panels for immediate collapse when leaving expanded notch area
-  const panels = notch.querySelectorAll('.panel');
-  panels.forEach(panel => {
-    panel.addEventListener('mouseleave', (e) => {
-      // When leaving any panel while expanded, collapse immediately
-      if (isMouseOverNotch && isExpanded) {
-        handleNotchLeave();
-      }
-    });
-  });
+  // NOTE: We deliberately do NOT attach mouseleave handlers to individual
+  // .panel elements. Swapping panels sets the outgoing one to display:none,
+  // which fires a spurious mouseleave even though the cursor is still inside
+  // the notch — that was collapsing the reply UI the instant it opened (the
+  // "flicker"). The notch-level mouseleave above already handles genuine
+  // exits, so per-panel handlers are redundant and harmful.
 
   // Quick share icon hover out effect (same as notch)
 const quickShareIcon = document.getElementById('quickShareIcon');
@@ -483,8 +489,16 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   document.addEventListener('mousemove', (e) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
-    if (isMouseOverNotchBounds(e, false) && !isMouseOverNotch) handleNotchEnter();
-    else if (!isMouseOverNotchBounds(e, true) && isMouseOverNotch) handleNotchLeave();
+    const inBounds = isMouseOverNotchBounds(e, isExpanded);
+    if (inBounds && !isMouseOverNotch) handleNotchEnter();
+    else if (!inBounds && isMouseOverNotch) handleNotchLeave();
+    // Safety net: hovering the collapsed notch must always expand it, even if
+    // isMouseOverNotch is still set from a collapse that happened under a
+    // resting cursor (otherwise you'd have to move away and back, or click).
+    else if (inBounds && !isExpanded) {
+      window.notchAPI.setIgnoreMouse(false);
+      scheduleExpand();
+    }
   });
   collapsedView.addEventListener('click', e => { 
     e.stopPropagation(); 
@@ -1812,10 +1826,31 @@ function showBluetoothToast(device) {
   }, 5000);
 }
 
-/* ─── Unread Messages (paired device carousel) ─── */
+/* ─── Unread Messages (swipeable carousel, shown in place of Quick Start) ─── */
 let unreadList = [];
 let unreadIndex = 0;
-let messagesPaired = false;
+// Tracks who a reply in the expanded panel should go to (set when a live
+// message arrives or an unread card is opened).
+let activeReplyContext = null;
+
+function openUnreadForReply(item) {
+  activeReplyContext = { sender: item.sender || null, app: item.app || null };
+
+  const nameEl = document.querySelectorAll('.msg-name');
+  const textExpEl = document.querySelector('.msg-exp-text');
+  const avatarEls = document.querySelectorAll('.msg-avatar');
+  const appIconSmall = document.querySelector('.msg-app-icon-small');
+  if (avatarEls && item.avatar) avatarEls.forEach(el => el.src = item.avatar);
+  if (nameEl) nameEl.forEach(el => el.textContent = item.sender || 'Unknown Sender');
+  if (textExpEl) textExpEl.textContent = item.text || '';
+  if (appIconSmall) appIconSmall.style.background = item.app === 'gchat' ? '#00897B' : '#34c759';
+
+  currentState = 'msg-expanded';
+  notch.setAttribute('data-state', 'msg-expanded');
+  if (!isExpanded) expand(); else showActivePanel();
+  const replyInput = document.getElementById('msgReplyInput');
+  if (replyInput) replyInput.focus();
+}
 
 function renderUnreadCard(item) {
   const card = document.createElement('div');
@@ -1848,6 +1883,12 @@ function renderUnreadCard(item) {
   body.appendChild(top);
   body.appendChild(text);
   card.appendChild(body);
+
+  card.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openUnreadForReply(item);
+  });
+
   return card;
 }
 
@@ -1856,10 +1897,6 @@ function updateUnreadTransform() {
   if (track) track.style.transform = 'translateX(-' + (unreadIndex * 100) + '%)';
   const dots = document.querySelectorAll('#unreadsDots .unreads-dot');
   dots.forEach((d, i) => d.classList.toggle('active', i === unreadIndex));
-  const prev = document.getElementById('unreadsPrev');
-  const next = document.getElementById('unreadsNext');
-  if (prev) prev.disabled = unreadIndex <= 0;
-  if (next) next.disabled = unreadIndex >= unreadList.length - 1;
 }
 
 function goToUnread(i) {
@@ -1887,17 +1924,10 @@ function renderUnreads(list) {
   const track = document.getElementById('unreadsTrack');
   const dots = document.getElementById('unreadsDots');
   const empty = document.getElementById('unreadsEmptyState');
-  const login = document.getElementById('dashLoginContainer');
   const carousel = document.getElementById('unreadsCarousel');
-  const countBadge = document.getElementById('unreadCountBadge');
-  if (!track) return;
 
-  if (unreadList.length > 0) messagesPaired = true;
-  if (messagesPaired && login) login.style.display = 'none';
-  if (countBadge) {
-    countBadge.style.display = unreadList.length > 0 ? 'inline-block' : 'none';
-    countBadge.textContent = unreadList.length > 99 ? '99+' : String(unreadList.length);
-  }
+  updateUnreadBadge(unreadList.length);
+  if (!track) { decideState(); return; }
 
   track.innerHTML = '';
   if (dots) dots.innerHTML = '';
@@ -1905,9 +1935,8 @@ function renderUnreads(list) {
   if (unreadList.length === 0) {
     if (carousel) carousel.style.display = 'none';
     if (dots) dots.style.display = 'none';
-    if (empty) empty.style.display = messagesPaired ? 'block' : 'none';
-    if (login) login.style.display = messagesPaired ? 'none' : 'block';
-    updateUnreadBadge(0);
+    if (empty) empty.style.display = 'block';
+    decideState();
     return;
   }
 
@@ -1926,80 +1955,13 @@ function renderUnreads(list) {
 
   unreadIndex = 0;
   updateUnreadTransform();
-  updateUnreadBadge(unreadList.length);
-  
-  renderCompactUnreads(unreadList);
-}
 
-function renderCompactUnreadCard(item) {
-  const card = document.createElement('div');
-  card.className = 'unreads-compact-card';
-  
-  const avatar = document.createElement('img');
-  avatar.className = 'unreads-compact-avatar';
-  avatar.alt = '';
-  avatar.src = item.avatar || ('https://i.pravatar.cc/150?u=' + encodeURIComponent(item.sender || 'unknown'));
-  card.appendChild(avatar);
-  
-  const body = document.createElement('div');
-  body.className = 'unreads-compact-body';
-  
-  const top = document.createElement('div');
-  top.className = 'unreads-compact-top';
-  const sender = document.createElement('span');
-  sender.className = 'unreads-compact-sender';
-  sender.textContent = item.sender || 'Unknown Sender';
-  const time = document.createElement('span');
-  time.className = 'unreads-compact-time';
-  time.textContent = item.time || '';
-  top.appendChild(sender);
-  top.appendChild(time);
-  
-  const text = document.createElement('div');
-  text.className = 'unreads-compact-text';
-  text.textContent = item.text || '';
-  
-  body.appendChild(top);
-  body.appendChild(text);
-  card.appendChild(body);
-  
-  card.addEventListener('click', (e) => {
-    e.stopPropagation();
-    currentState = 'msg-expanded';
-    notch.setAttribute('data-state', 'msg-expanded');
-    showActivePanel();
-    const replyInput = document.getElementById('msgReplyInput');
-    if (replyInput) replyInput.focus();
-  });
-  
-  return card;
-}
-
-function renderCompactUnreads(list) {
-  const track = document.getElementById('unreadsCompactTrack');
-  const empty = document.getElementById('unreadsCompactEmpty');
-  if (!track) return;
-  
-  track.innerHTML = '';
-  
-  if (!list || list.length === 0) {
-    if (empty) empty.style.display = 'block';
-    return;
-  }
-  
-  if (empty) empty.style.display = 'none';
-  
-  list.forEach(item => {
-    track.appendChild(renderCompactUnreadCard(item));
-  });
+  // A fresh unread list just came in — let the notch surface it now
+  // instead of waiting for the next unrelated state check.
+  decideState();
 }
 
 function setupUnreads() {
-  const prev = document.getElementById('unreadsPrev');
-  const next = document.getElementById('unreadsNext');
-  if (prev) prev.addEventListener('click', (e) => { e.stopPropagation(); prevUnread(); });
-  if (next) next.addEventListener('click', (e) => { e.stopPropagation(); nextUnread(); });
-
   const vp = document.getElementById('unreadsViewport');
   if (!vp) return;
   let startX = 0, dragging = false, dx = 0;
@@ -2656,7 +2618,10 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
       if (nameEl) nameEl.forEach(el => el.textContent = data.sender || 'Unknown Sender');
       if (textEl) textEl.textContent = data.text || 'New message...';
       if (textExpEl) textExpEl.textContent = data.text || 'New message...';
-      
+
+      // A reply typed from here should go back to whoever just texted.
+      activeReplyContext = { sender: data.sender || null, app: data.app || null };
+
       if (appIcon && data.app === 'gchat') {
         appIcon.style.background = '#00897B'; // Gchat green
         if (appIconSmall) appIconSmall.style.background = '#00897B';
@@ -2691,7 +2656,11 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
       if (replyInput && replyInput.value.trim() !== '') {
         const text = replyInput.value.trim();
         if (window.notchAPI && window.notchAPI.sendReply) {
-          window.notchAPI.sendReply(text);
+          window.notchAPI.sendReply({
+            text,
+            sender: activeReplyContext ? activeReplyContext.sender : null,
+            app: activeReplyContext ? activeReplyContext.app : null
+          });
         }
         replyInput.value = '';
         if (window.msgCollapseTimeout) {
@@ -2711,7 +2680,11 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
           if (files && files.length > 0) {
             console.log('[App] Selected attachment:', files);
             if (window.notchAPI && window.notchAPI.sendReply) {
-              window.notchAPI.sendReply(files[0]);
+              window.notchAPI.sendReply({
+                attachment: files[0],
+                sender: activeReplyContext ? activeReplyContext.sender : null,
+                app: activeReplyContext ? activeReplyContext.app : null
+              });
             }
           }
         }
@@ -2736,7 +2709,8 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     squares.forEach((sq, idx) => {
       const item = quickLaunchItems[idx];
       if (item && item.icon) {
-        sq.innerHTML = `<img src="${item.icon}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px; pointer-events: none;" />`;
+        sq.innerHTML = `<img src="${item.icon}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px; pointer-events: none;" />` +
+          `<button class="ql-delete" title="Remove from Quick Start" aria-label="Remove from Quick Start"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
         sq.dataset.appPath = item.path || '';
         sq.dataset.hasApp = 'true';
       } else {
@@ -2762,6 +2736,12 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
 
   function resetQuickLaunchSquares() {
     quickLaunchItems = [];
+    renderQuickLaunch();
+  }
+
+  function removeQuickLaunchItem(index) {
+    quickLaunchItems[index] = null;
+    saveQuickLaunch();
     renderQuickLaunch();
   }
 
@@ -2814,7 +2794,7 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
       padding-bottom: 12px;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     `;
-    header.innerHTML = `<span style="color:#fff;font-weight:600;font-size:15px;letter-spacing:0.3px;">Select an App</span><button id="closeAppPicker" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:22px;cursor:pointer;padding:4px 8px;line-height:1;border-radius:8px;transition:all 0.15s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.color='rgba(255,255,255,0.6)';this.style.background='none'">×</button>`;
+    header.innerHTML = `<span style="color:#fff;font-weight:600;font-size:15px;letter-spacing:0.3px;">Select an App</span><div style="display:flex;align-items:center;gap:4px;"><button id="clearAppSlot" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:8px;transition:all 0.15s;" onmouseover="this.style.color='#ff453a';this.style.background='rgba(255,69,58,0.12)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='none'">Clear</button><button id="closeAppPicker" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:22px;cursor:pointer;padding:4px 8px;line-height:1;border-radius:8px;transition:all 0.15s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.color='rgba(255,255,255,0.6)';this.style.background='none'">×</button></div>`;
     
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
@@ -2921,6 +2901,12 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     
     searchInput.addEventListener('input', (e) => renderApps(e.target.value));
     header.querySelector('#closeAppPicker').addEventListener('click', closePicker);
+    header.querySelector('#clearAppSlot').addEventListener('click', () => {
+      quickLaunchItems[targetIndex] = null;
+      saveQuickLaunch();
+      renderQuickLaunch();
+      closePicker();
+    });
     modal.addEventListener('click', (e) => { if (e.target === modal) closePicker(); });
     document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { closePicker(); document.removeEventListener('keydown', esc); } });
     
@@ -2938,14 +2924,39 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     const index = parseInt(sq.dataset.index, 10);
 
     if (hasApp && appPath) {
-      if (window.notchAPI && window.notchAPI.launchApp) {
+      // Bring the already-running app back to the front if it has one,
+      // otherwise start it fresh — "exactly where you left off".
+      if (window.notchAPI && window.notchAPI.focusOrLaunchApp) {
+        await window.notchAPI.focusOrLaunchApp(appPath);
+      } else if (window.notchAPI && window.notchAPI.launchApp) {
         await window.notchAPI.launchApp(appPath);
       }
       return;
     }
 
-    // Open visual app picker instead of file dialog
-    await showAppPicker(index);
+    await pinCurrentAppToSquare(index, sq);
+  }
+
+  // Pins whatever app the user was on right before clicking the notch
+  // into this square. Relies on main.js tracking the last foreground
+  // window (the notch itself is non-focusable so it never steals that).
+  async function pinCurrentAppToSquare(index, sq) {
+    if (!window.notchAPI || !window.notchAPI.getForegroundApp) return;
+
+    sq.classList.add('ql-pinning');
+    try {
+      const current = await window.notchAPI.getForegroundApp();
+      if (!current || !current.path) return;
+
+      const icon = window.notchAPI.getAppIcon ? await window.notchAPI.getAppIcon(current.path) : null;
+      if (!icon) return;
+
+      quickLaunchItems[index] = { path: current.path, icon, name: current.name || '' };
+      saveQuickLaunch();
+      renderQuickLaunch();
+    } finally {
+      sq.classList.remove('ql-pinning');
+    }
   }
 
   function setupQuickLaunch() {
@@ -2953,7 +2964,21 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     squares.forEach(sq => {
       sq.addEventListener('click', (e) => {
         e.stopPropagation();
+        // Clicking the red X removes the pinned app instead of launching it.
+        if (e.target.closest('.ql-delete')) {
+          const index = parseInt(sq.dataset.index, 10);
+          removeQuickLaunchItem(index);
+          return;
+        }
         handleQuickLaunchClick(sq);
+      });
+      // Right-click still opens the full searchable app picker, in case
+      // the app you want pinned isn't the one currently in front.
+      sq.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = parseInt(sq.dataset.index, 10);
+        showAppPicker(index);
       });
     });
 

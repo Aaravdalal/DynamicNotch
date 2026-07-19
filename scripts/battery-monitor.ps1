@@ -2,6 +2,27 @@ $lastPercent = -1
 $lastIsCharging = -1
 $lastIsSaver = -1
 
+# Use the same Win32 API the Windows taskbar uses (GetSystemPowerStatus).
+# Win32_Battery.EstimatedChargeRemaining (WMI) is computed differently and
+# routinely reads 1% off from the taskbar — this fixes that mismatch.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class PowerStatus {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SYSTEM_POWER_STATUS {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public int BatteryLifeTime;
+        public int BatteryFullLifeTime;
+    }
+    [DllImport("kernel32.dll")]
+    public static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
+}
+"@
+
 Write-Host "Battery Monitor Started. Listening for changes..."
 
 function Get-SaverOn {
@@ -22,14 +43,24 @@ function Get-SaverOn {
 
 while ($true) {
     try {
-        $bat = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
-
         $percent = 100
         $isCharging = $false
 
-        if ($bat) {
-            $percent = $bat.EstimatedChargeRemaining
-            $isCharging = ($bat.BatteryStatus -eq 2) -or ($bat.BatteryStatus -ge 6 -and $bat.BatteryStatus -le 9)
+        $status = New-Object PowerStatus+SYSTEM_POWER_STATUS
+        if ([PowerStatus]::GetSystemPowerStatus([ref]$status)) {
+            # BatteryLifePercent: 0-100, or 255 when unknown.
+            if ($status.BatteryLifePercent -le 100) {
+                $percent = [int]$status.BatteryLifePercent
+            }
+            # ACLineStatus: 1 = plugged in (treated as charging), 0 = on battery.
+            $isCharging = ($status.ACLineStatus -eq 1)
+        } else {
+            # Fallback to WMI if the API call fails for any reason.
+            $bat = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
+            if ($bat) {
+                $percent = $bat.EstimatedChargeRemaining
+                $isCharging = ($bat.BatteryStatus -eq 2) -or ($bat.BatteryStatus -ge 6 -and $bat.BatteryStatus -le 9)
+            }
         }
 
         $isSaver = Get-SaverOn
