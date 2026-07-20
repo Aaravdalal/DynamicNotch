@@ -1039,21 +1039,47 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   const dashCal = document.querySelector('.dash-cal');
 
   if (dashCal) {
-    let lastScrollTime = 0;
-    
+    const strip = document.getElementById('dashDays');
+    // Wheel/trackpad scrolls the day strip horizontally.
     dashCal.addEventListener('wheel', e => {
       e.stopPropagation();
-      // Vertical swipe to change days with throttle
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        const now = Date.now();
-        if (now - lastScrollTime > 300) { // 300ms cooldown
-          if (e.deltaY > 0) calendarOffset++;
-          else calendarOffset--;
-          updateClock();
-          lastScrollTime = now;
-        }
-      }
-    });
+      if (!strip) return;
+      e.preventDefault();
+      // Use whichever axis the user is scrolling on
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      strip.scrollLeft += delta;
+    }, { passive: false });
+
+    // Click-and-drag to scroll the carousel left/right (grab & swipe).
+    if (strip) {
+      let dragging = false, startX = 0, lastX = 0, moved = false;
+      strip.addEventListener('pointerdown', e => {
+        dragging = true; moved = false;
+        startX = lastX = e.clientX;
+        strip.classList.add('dragging');
+        try { strip.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      strip.addEventListener('pointermove', e => {
+        if (!dragging) return;
+        // Incremental delta — stays consistent even if the carousel prepends/
+        // appends days mid-drag (which shifts scrollLeft to compensate).
+        if (Math.abs(e.clientX - startX) > 3) moved = true;
+        strip.scrollLeft -= (e.clientX - lastX);
+        lastX = e.clientX;
+      });
+      const endDrag = e => {
+        if (!dragging) return;
+        dragging = false;
+        strip.classList.remove('dragging');
+        try { strip.releasePointerCapture(e.pointerId); } catch (_) {}
+      };
+      strip.addEventListener('pointerup', endDrag);
+      strip.addEventListener('pointercancel', endDrag);
+      // Swallow the click that follows a drag so it doesn't open the calendar app.
+      strip.addEventListener('click', e => {
+        if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+      }, true);
+    }
   }
 }
 
@@ -1064,15 +1090,10 @@ function updateClock() {
   document.getElementById('cTime').textContent = `${h % 12 || 12}:${m}`;
   document.getElementById('cPeriod').textContent = h >= 12 ? 'Pm' : 'Am';
 
-  const target = new Date(); target.setDate(now.getDate() + calendarOffset);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  
-  document.getElementById('dashMonth').textContent = months[target.getMonth()];
-
   const shortDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const fullDays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  
+  // Month label is driven by the calendar carousel (updateCalMonthLabel), not here.
+
   const cDateEl = document.getElementById('cDate');
   const dateStr = `${shortDays[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
   if (cDateEl) cDateEl.textContent = dateStr;
@@ -1082,28 +1103,171 @@ function updateClock() {
   if (bigTime) bigTime.textContent = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
   if (bigDate) bigDate.textContent = dateStr;
 
-  const strip = document.getElementById('dashDays');
-  if (strip) {
-    strip.innerHTML = '';
-    // Render past 7 days and future 14 days to allow scrolling
-    for (let i = -7; i <= 14; i++) {
-      const d = new Date(target); d.setDate(target.getDate() + i);
-      const name = shortDays[d.getDay()];
-      const num = d.getDate().toString().padStart(2, '0');
-      // Ensure the 'active' day is when i === 0
-      strip.innerHTML += `<div class="day${i===0?' active':''}"><span>${name}</span><span>${num}</span></div>`;
-    }
-    // Set scroll position to center the active item (roughly)
-    setTimeout(() => {
-      const activeEl = strip.querySelector('.active');
-      if (activeEl) {
-        strip.scrollLeft = activeEl.offsetLeft - strip.offsetWidth / 2 + activeEl.offsetWidth / 2;
-      }
-    }, 0);
+  renderCalStrip();
+}
 
-    // Fetch and display events for the current target date
-    fetchCalendar();
+/* ─── Calendar: infinite (circular) day carousel ─── */
+const CAL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CAL_SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+let lastStripKey = '';
+let calFirst = 0, calLast = 0;   // offset range (days from today) currently rendered
+let calScrollBound = false;
+
+// One day cell. `offset` is days from today; offset 0 is today (highlighted blue).
+function dayCellHTML(offset) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(today); d.setDate(today.getDate() + offset);
+  const isToday = offset === 0;
+  const full = CAL_SHORT_DAYS[d.getDay()];
+  const name = isToday ? full.toUpperCase() : full.charAt(0);
+  const num = d.getDate().toString().padStart(2, '0');
+  return `<div class="day${isToday ? ' active' : ''}" data-offset="${offset}" data-month="${d.getMonth()}"><span>${name}</span><span>${num}</span></div>`;
+}
+
+// Mutate the FRONT of the strip while keeping the visual scroll position stable
+// (adding/removing at the front shifts everything, so compensate scrollLeft).
+function calFrontMutate(strip, fn) {
+  const prev = strip.style.scrollBehavior;
+  strip.style.scrollBehavior = 'auto';
+  const before = strip.scrollWidth;
+  fn();
+  const after = strip.scrollWidth;
+  strip.scrollLeft += (after - before);
+  strip.style.scrollBehavior = prev;
+}
+
+// Update the big month label ("Aug") to whichever day sits at the strip's centre.
+function updateCalMonthLabel() {
+  const strip = document.getElementById('dashDays');
+  const monthEl = document.getElementById('dashMonth');
+  if (!strip || !monthEl || !strip.children.length) return;
+  const box = strip.getBoundingClientRect();
+  const cx = box.left + box.width / 2;
+  let best = null, bestDist = Infinity;
+  for (const c of strip.children) {
+    const b = c.getBoundingClientRect();
+    const dist = Math.abs((b.left + b.width / 2) - cx);
+    if (dist < bestDist) { bestDist = dist; best = c; }
   }
+  if (best && best.dataset.month != null) {
+    monthEl.textContent = CAL_MONTHS[parseInt(best.dataset.month, 10)];
+  }
+}
+
+// Carousel depth: fade + shrink each day cell by its distance from the strip's
+// centre, so today sits bright in the middle and days trail off to both sides.
+function applyCalFade() {
+  const strip = document.getElementById('dashDays');
+  if (!strip || !strip.children.length) return;
+  const box = strip.getBoundingClientRect();
+  const cx = box.left + box.width / 2;
+  const half = (box.width / 2) || 1;
+  for (const c of strip.children) {
+    // Today always stays full-strength so its bold blue reads clearly.
+    if (c.classList.contains('active')) { c.style.opacity = '1'; c.style.transform = 'scale(1)'; continue; }
+    const b = c.getBoundingClientRect();
+    const d = Math.min(1, Math.abs((b.left + b.width / 2) - cx) / half);
+    c.style.opacity = (1 - d * d * 0.85).toFixed(3);   // strong fade toward edges
+    c.style.transform = `scale(${(1 - d * 0.3).toFixed(3)})`; // shrink toward edges
+  }
+}
+
+// Grow the strip near either edge so it never runs out (circular feel), and trim
+// the far side so the DOM stays bounded.
+function extendCalIfNeeded() {
+  const strip = document.getElementById('dashDays');
+  if (!strip) return;
+  const BATCH = 14, THRESH = 260, MAX = 100;
+
+  if (strip.scrollLeft < THRESH) {
+    let h = '';
+    for (let o = calFirst - 1; o >= calFirst - BATCH; o--) h = dayCellHTML(o) + h;
+    calFrontMutate(strip, () => strip.insertAdjacentHTML('afterbegin', h));
+    calFirst -= BATCH;
+    while (calLast - calFirst > MAX && strip.lastElementChild) { // trim far (right) end
+      strip.removeChild(strip.lastElementChild); calLast--;
+    }
+  }
+
+  if (strip.scrollLeft > strip.scrollWidth - strip.clientWidth - THRESH) {
+    let h = '';
+    for (let o = calLast + 1; o <= calLast + BATCH; o++) h += dayCellHTML(o);
+    strip.insertAdjacentHTML('beforeend', h);
+    calLast += BATCH;
+    calFrontMutate(strip, () => { // trim far (left) end, compensating scroll
+      while (calLast - calFirst > MAX && strip.firstElementChild) {
+        strip.removeChild(strip.firstElementChild); calFirst++;
+      }
+    });
+  }
+}
+
+// Build the carousel once per day (rebuilds at midnight so "today" moves).
+function renderCalStrip() {
+  const strip = document.getElementById('dashDays');
+  if (!strip) return;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const key = today.toDateString();
+  if (key === lastStripKey) return; // already built for today — keep scroll position
+  lastStripKey = key;
+
+  calFirst = -30; calLast = 30;
+  let html = '';
+  for (let o = calFirst; o <= calLast; o++) html += dayCellHTML(o);
+  strip.innerHTML = html;
+
+  calCentered = false;
+
+  if (!calScrollBound) {
+    calScrollBound = true;
+    let raf = null;
+    strip.addEventListener('scroll', () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        extendCalIfNeeded();
+        updateCalMonthLabel();
+        applyCalFade();
+      });
+    });
+    // The dashboard is often display:none when the strip is first built, so the
+    // initial centring measures zero and fails — re-centre today once the strip
+    // actually gets laid out (and whenever it becomes visible again).
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => {
+        const w = strip.clientWidth;
+        if (w > 0 && (lastW === 0 || !calCentered)) centerCalToday();
+        lastW = w;
+      }).observe(strip);
+    }
+  }
+
+  // Centre today after layout settles (works when already visible).
+  requestAnimationFrame(centerCalToday);
+
+  fetchCalendar();
+}
+
+// Scroll the strip so today sits dead-centre. No-op until the strip has a real
+// width (i.e. the dashboard is actually on screen).
+let calCentered = false;
+function centerCalToday() {
+  const strip = document.getElementById('dashDays');
+  if (!strip || !strip.clientWidth || !strip.children.length) return;
+  const el = strip.querySelector('.active');
+  if (el) {
+    const prev = strip.style.scrollBehavior;
+    strip.style.scrollBehavior = 'auto';
+    const sb = strip.getBoundingClientRect();
+    const eb = el.getBoundingClientRect();
+    strip.scrollLeft += (eb.left + eb.width / 2) - (sb.left + sb.width / 2);
+    strip.style.scrollBehavior = prev;
+    calCentered = true;
+  }
+  updateCalMonthLabel();
+  applyCalFade();
 }
 
 /* ─── Media ─── */
@@ -1174,9 +1338,10 @@ async function fetchCalendar() {
         const todayEvent = events[0];
         footer.querySelector('span').textContent = todayEvent.title;
         footer.style.color = todayEvent.color || 'rgba(255,255,255,0.35)';
+        footer.style.display = 'flex';
       } else {
-        footer.querySelector('span').textContent = 'Nothing for today';
-        footer.style.color = 'rgba(255,255,255,0.35)';
+        // No events — hide the footer entirely (no "Nothing for today" placeholder)
+        footer.style.display = 'none';
       }
     }
   } catch (err) {
@@ -2360,6 +2525,267 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 setInterval(fetchWeather, 3600000);
+
+/* ─── Widgets: multi-select carousel + Stocks (market / watchlist) ─── */
+const ALL_WIDGETS = ['weather', 'stocks'];
+
+// Which widgets are on the dashboard (multi-select) and which one is showing.
+let selectedWidgets = ['weather'];
+try {
+  const saved = JSON.parse(localStorage.getItem('dashWidgets') || 'null');
+  if (Array.isArray(saved) && saved.length) {
+    selectedWidgets = saved.filter(w => ALL_WIDGETS.includes(w));
+  }
+} catch (e) {}
+if (!selectedWidgets.length) selectedWidgets = ['weather'];
+let widgetIndex = 0;
+
+// Stocks widget: 'market' (indices) or 'watchlist' (user-chosen symbols).
+let stocksMode = 'market';
+try { stocksMode = localStorage.getItem('stocksMode') || 'market'; } catch (e) {}
+let watchlist = [];
+try { watchlist = JSON.parse(localStorage.getItem('stocksWatchlist') || '[]') || []; } catch (e) {}
+let stocksInterval = null;
+
+function sparkPoints(vals, w = 100, h = 16) {
+  if (!vals || vals.length < 2) return '';
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const pad = 1.5;
+  return vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * w;
+    const y = (h - pad) - ((v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+
+async function fetchStocks() {
+  const row = document.getElementById('stocksRow');
+  if (!row) return;
+  const watch = stocksMode === 'watchlist';
+  if (watch && watchlist.length === 0) {
+    row.innerHTML = '<div class="stocks-loading">Add symbols above to build your watchlist</div>';
+    return;
+  }
+  try {
+    const data = await window.notchAPI.getStocks(watch ? { symbols: watchlist } : undefined);
+    if (!data || !data.length) throw new Error('no data');
+    row.innerHTML = data.map(s => {
+      const up = (s.changePct ?? 0) >= 0;
+      const dir = up ? 'up' : 'down';
+      const color = up ? '#16a34a' : '#dc2626';
+      const price = (s.price != null)
+        ? s.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '--';
+      const pct = (s.changePct != null)
+        ? `${up ? '+' : ''}${s.changePct.toFixed(2)}%`
+        : '';
+      const pts = sparkPoints(s.spark, 100, 20);
+      const spark = pts
+        ? `<svg class="stock-spark" viewBox="0 0 100 20" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+        : '';
+      const remove = watch
+        ? `<button class="stock-remove" data-symbol="${s.symbol}" title="Remove">×</button>`
+        : '';
+      return `<div class="stock-item">
+        ${remove}
+        <div class="stock-top">
+          <span class="stock-name">${s.label}</span>
+          <span class="stock-change ${dir}">${pct}</span>
+        </div>
+        <div class="stock-price">${price}</div>
+        ${spark}
+      </div>`;
+    }).join('');
+    if (watch) {
+      row.querySelectorAll('.stock-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeFromWatchlist(btn.dataset.symbol);
+        });
+      });
+    }
+  } catch (e) {
+    row.innerHTML = '<div class="stocks-loading">Markets unavailable</div>';
+  }
+}
+
+/* Watchlist persistence */
+function saveWatchlist() {
+  try { localStorage.setItem('stocksWatchlist', JSON.stringify(watchlist)); } catch (e) {}
+}
+function addToWatchlist(sym) {
+  sym = (sym || '').trim().toUpperCase();
+  if (!sym) return;
+  if (!watchlist.includes(sym)) watchlist.push(sym);
+  saveWatchlist();
+  fetchStocks();
+}
+function removeFromWatchlist(sym) {
+  watchlist = watchlist.filter(s => s !== sym);
+  saveWatchlist();
+  fetchStocks();
+}
+
+/* Sync the stocks widget's header + add-row to the current mode */
+function syncStocksModeUI() {
+  const title = document.getElementById('stocksTitle');
+  if (title) title.textContent = stocksMode === 'watchlist' ? 'Watchlist' : 'Markets';
+  const add = document.getElementById('watchlistAdd');
+  if (add) add.style.display = stocksMode === 'watchlist' ? 'flex' : 'none';
+  document.querySelectorAll('#stocksModeMenu .sm-item').forEach(it => {
+    it.classList.toggle('selected', it.dataset.mode === stocksMode);
+  });
+}
+function setStocksMode(mode) {
+  stocksMode = mode;
+  try { localStorage.setItem('stocksMode', mode); } catch (e) {}
+  syncStocksModeUI();
+  fetchStocks();
+}
+
+/* Carousel: show only the active widget; reveal the arrow + dots when 2+ chosen */
+function renderWidgets() {
+  if (widgetIndex >= selectedWidgets.length) widgetIndex = 0;
+  const active = selectedWidgets[widgetIndex];
+  const weatherEl = document.getElementById('dashWeather');
+  const stocksEl = document.getElementById('dashStocks');
+  if (weatherEl) weatherEl.style.display = active === 'weather' ? 'flex' : 'none';
+  if (stocksEl) stocksEl.style.display = active === 'stocks' ? 'flex' : 'none';
+
+  const multi = selectedWidgets.length > 1;
+  const nav = document.getElementById('widgetNav');
+  if (nav) nav.style.display = multi ? 'flex' : 'none';
+
+  document.querySelectorAll('#widgetPicker .wp-item').forEach(it => {
+    it.classList.toggle('selected', selectedWidgets.includes(it.dataset.widget));
+  });
+
+  clearInterval(stocksInterval);
+  if (active === 'stocks') {
+    syncStocksModeUI();
+    fetchStocks();
+    // Live refresh from Yahoo Finance — prices AND sparkline shapes
+    stocksInterval = setInterval(fetchStocks, 15000);
+  }
+}
+
+function nextWidget(dir) {
+  if (selectedWidgets.length < 2) return;
+  const n = selectedWidgets.length;
+  widgetIndex = (widgetIndex + (dir || 1) + n) % n;
+  renderWidgets();
+}
+
+function toggleWidget(w) {
+  if (selectedWidgets.includes(w)) {
+    if (selectedWidgets.length === 1) return; // always keep at least one
+    selectedWidgets = selectedWidgets.filter(x => x !== w);
+  } else {
+    selectedWidgets.push(w);
+  }
+  try { localStorage.setItem('dashWidgets', JSON.stringify(selectedWidgets)); } catch (e) {}
+  // Jump the carousel to the widget we just toggled (so it actually shows up),
+  // otherwise land on a valid index.
+  const idx = selectedWidgets.indexOf(w);
+  widgetIndex = idx >= 0 ? idx : Math.min(widgetIndex, selectedWidgets.length - 1);
+  renderWidgets();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const addBtn = document.getElementById('addWidgetBtn');
+  const picker = document.getElementById('widgetPicker');
+
+  renderWidgets();
+
+  // + button opens the multi-select widget picker
+  if (addBtn && picker) {
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    });
+    picker.querySelectorAll('.wp-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleWidget(item.dataset.widget); // stays open so several can be toggled
+      });
+    });
+    document.addEventListener('click', (e) => {
+      if (picker.style.display !== 'none' && !picker.contains(e.target) && e.target !== addBtn && !addBtn.contains(e.target)) {
+        picker.style.display = 'none';
+      }
+    });
+  }
+
+  // Carousel arrow → advance to the next selected widget
+  const nav = document.getElementById('widgetNav');
+  if (nav) nav.addEventListener('click', (e) => { e.stopPropagation(); nextWidget(1); });
+
+  // Two-finger (trackpad) horizontal swipe over the widget area also carousels.
+  const widgetsCol = document.getElementById('dashWidgetsCol');
+  if (widgetsCol) {
+    let swipeAccum = 0, swipeCooldown = false;
+    widgetsCol.addEventListener('wheel', (e) => {
+      if (selectedWidgets.length < 2) return;
+      // Only treat clearly-horizontal gestures as a swipe.
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (swipeCooldown) return;
+      swipeAccum += e.deltaX;
+      if (Math.abs(swipeAccum) > 60) {
+        nextWidget(swipeAccum > 0 ? 1 : -1);
+        swipeAccum = 0;
+        swipeCooldown = true;
+        setTimeout(() => { swipeCooldown = false; }, 450);
+      }
+    }, { passive: false });
+  }
+
+  // Stocks: Market / Watchlist dropdown
+  const modeBtn = document.getElementById('stocksModeBtn');
+  const modeMenu = document.getElementById('stocksModeMenu');
+  if (modeBtn && modeMenu) {
+    modeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = modeMenu.style.display !== 'none';
+      modeMenu.style.display = open ? 'none' : 'flex';
+      modeBtn.classList.toggle('open', !open);
+    });
+    modeMenu.querySelectorAll('.sm-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setStocksMode(item.dataset.mode);
+        modeMenu.style.display = 'none';
+        modeBtn.classList.remove('open');
+      });
+    });
+    document.addEventListener('click', (e) => {
+      if (modeMenu.style.display !== 'none' && !modeMenu.contains(e.target) && !modeBtn.contains(e.target)) {
+        modeMenu.style.display = 'none';
+        modeBtn.classList.remove('open');
+      }
+    });
+  }
+
+  // Watchlist add row
+  const wlInput = document.getElementById('watchlistInput');
+  const wlAddBtn = document.getElementById('watchlistAddBtn');
+  const submitWl = () => {
+    if (!wlInput) return;
+    addToWatchlist(wlInput.value);
+    wlInput.value = '';
+    wlInput.focus();
+  };
+  if (wlAddBtn) wlAddBtn.addEventListener('click', (e) => { e.stopPropagation(); submitWl(); });
+  if (wlInput) {
+    wlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitWl(); }
+      e.stopPropagation();
+    });
+    wlInput.addEventListener('click', (e) => e.stopPropagation());
+  }
+});
 
 // --- FILE TRAY LOGIC ---
 let dragLeaveTimer;

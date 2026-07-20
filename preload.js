@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('notchAPI', {
   selectAttachment: () => ipcRenderer.invoke('select-attachment'),
   getYoutubeStream: (id) => ipcRenderer.invoke('get-youtube-stream', id),
   fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
+  getStocks: (opts) => ipcRenderer.invoke('get-stocks', opts),
   simulateWinH: () => ipcRenderer.invoke('simulate-win-h'),
   
   // File Tray APIs

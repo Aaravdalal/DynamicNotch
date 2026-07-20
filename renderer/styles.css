@@ -409,10 +409,11 @@ html, body {
 
 /* music col */
 .dash-music{
-  flex:1.0 !important;min-width:0;
-  display:flex;flex-direction:row;gap:10px;align-items:center;padding:4px 4px 4px 0 !important;
+  flex:1.0 !important;min-width:0;overflow:hidden;
+  display:flex;flex-direction:row;gap:10px;align-items:center;padding:4px 8px 4px 0 !important;
   border-right:1px solid rgba(255,255,255,.05);
 }
+.dash-music-details{overflow:hidden;}
 .dash-art{position:relative;width:64px;height:64px;border-radius:14px;overflow:hidden;background:#1a1a2e;flex-shrink:0}
 .dash-art img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;display:none;z-index:2}
 .dash-art-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#6C5CE7,#a29bfe);opacity:0.6;font-size:24px;color:rgba(255,255,255,0.8)}
@@ -431,7 +432,7 @@ html, body {
 .dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
 /* calendar col - compact */
-.dash-cal{flex:none !important;width:280px !important;height: 60px; transition: height 0.3s cubic-bezier(0.25, 1, 0.5, 1); display:block; margin-left: auto !important; margin-right: 12px !important; overflow: hidden; position: relative;}
+.dash-cal{flex:none !important;width:280px !important;height: 54px; transition: height 0.3s cubic-bezier(0.25, 1, 0.5, 1); display:block; margin-left: auto !important; margin-right: 12px !important; overflow: visible; position: relative;}
 
 /* ─── Unread messages carousel (beneath calendar) ─── */
 .unreads-carousel{display:flex;align-items:center;gap:4px;width:100%;flex:1;min-height:0;}
@@ -462,30 +463,30 @@ html, body {
 .dash-cal.show-grid { height: 175px; }
 .notch[data-state="music"] .dash-cal, .notch[data-state="music"] .dash-sep {display: none !important;}
 .notch[data-state="bt-music"] .dash-cal, .notch[data-state="bt-music"] .dash-sep {display: none !important;}
-.dash-cal-row{display:flex;align-items:center;justify-content:center;gap:16px;width:100%}
-.dash-month-large{display:flex;align-items:center;justify-content:center;gap:6px;font-size:24px;font-weight:800;letter-spacing:-0.04em;color:#fff;line-height:1;opacity:0.95;}
-.cal-arrow{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.2s;font-size:12px;background:rgba(255,255,255,0.1);border-radius:50%;padding:3px}
-.cal-arrow:hover{opacity:1;background:rgba(255,255,255,0.2)}
-.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:4px;max-width:160px;}
+.dash-cal-row{display:flex;align-items:center;justify-content:flex-start;gap:14px;width:100%;padding-left:10px;box-sizing:border-box;}
+.dash-month-large{display:flex;align-items:center;justify-content:center;gap:5px;font-size:26px;font-weight:800;letter-spacing:-0.04em;color:#fff;line-height:1;opacity:1;flex-shrink:0;}
+/* Nav arrows hidden — browsing is via horizontal scroll (matches design) */
+.cal-arrow{display:none;}
+.dash-cal-right{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1;min-width:0;}
 
 .panel-unreads { background: #000; }
 .unreads-carousel.clickable .unread-card{cursor:pointer;}
 
 /* Quick Start launcher */
-.ql-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.08em;padding:0 2px;margin:-16px 0 4px;}
+.ql-label{font-size:13px;font-weight:600;color:#fff;padding:0 2px;margin:auto 0 5px 2px;}
 .quick-launch-grid{
-  width:100%;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;flex:none;display:flex;align-items:center;justify-content:space-evenly;
   background:#fff;
-  border-radius:16px;padding:10px;box-sizing:border-box;
+  border-radius:14px;padding:8px;box-sizing:border-box;margin-bottom:4px;
 }
 .ql-square{
-  width:38px;height:38px;border-radius:11px;flex-shrink:0;
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;
-  background:#000;border:none;
-  color:#fff;
+  background:#d8d8dd;border:none;
+  color:#000;
   transition:background .15s ease,transform .15s ease,box-shadow .15s ease;
 }
-.ql-square:hover{background:#1a1a1a;transform:translateY(-1px);}
+.ql-square:hover{background:#c7c7ce;transform:translateY(-1px);}
 .ql-square:active{transform:translateY(0) scale(0.94);}
 .ql-square[data-has-app="true"]{border:none;background:transparent;box-shadow:none;}
 .ql-square[data-has-app="true"]{overflow:visible;}
@@ -508,13 +509,16 @@ html, body {
 .dash-cal-strip{
   display:flex;
   justify-content:flex-start;
-  gap:8px;
+  gap:6px;
   overflow-x:auto;
+  overscroll-behavior-x:contain;
   scrollbar-width:none; /* Firefox */
-  scroll-behavior: smooth;
-  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  cursor:grab;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%);
 }
+.dash-cal-strip.dragging{cursor:grabbing;}
+.dash-cal-strip.dragging .day{cursor:grabbing;}
 .dash-cal-strip::-webkit-scrollbar {
   display:none; /* Chrome/Safari */
 }
@@ -576,20 +580,21 @@ html, body {
 
 .day{
   display:flex;flex-direction:column;align-items:center;
-  color:rgba(255,255,255,0.3);font-size:10px;font-weight:700;gap:6px;
-  padding:4px 8px; border-radius: 8px; transition:all .2s ease;
-  letter-spacing:0.02em;min-width:28px;
+  color:rgba(255,255,255,0.4);font-size:11px;font-weight:500;gap:6px;
+  padding:5px 7px; border-radius:12px;
+  transition:color .2s ease, opacity .12s linear, transform .12s linear;
+  letter-spacing:0.03em;min-width:26px;text-transform:uppercase;
+  cursor:grab;flex-shrink:0;will-change:opacity,transform;
 }
-.day span:last-child{font-size:18px;font-weight:900;letter-spacing:-0.02em;line-height:1;color:rgba(255,255,255,0.15)}
-.day.active {
-  background: rgba(255, 255, 255, 0.15);
-}
-.day.active span:last-child{
-  color:#fff;
-}
-.day.active span:first-child{
-  color:rgba(255,255,255,0.9);
-  font-weight:900;
+/* Other days: regular weight, dim */
+.day span:last-child{font-size:16px;font-weight:500;letter-spacing:-0.01em;line-height:1;color:rgba(255,255,255,0.55)}
+.day:hover span:last-child{color:rgba(255,255,255,0.85);}
+/* Today: bold, blue font (no pill) — forced over the dim per-cell rules */
+.dash-cal-strip .day.active span,
+.dash-cal-strip .day.active span:first-child,
+.dash-cal-strip .day.active span:last-child{
+  color:#0a84ff !important;
+  font-weight:800 !important;
 }
 
 .dash-cal-footer{
@@ -893,6 +898,113 @@ html, body {
 .weather-forecast-btn:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+
+/* ═══ STOCKS WIDGET (Markets) — white, like the reference ═══ */
+.dash-stocks{
+  flex:1;min-height:0;box-sizing:border-box;
+  background:#ffffff;border:1px solid rgba(0,0,0,0.06);
+  box-shadow:0 4px 14px rgba(0,0,0,0.25);
+  border-radius:16px;padding:6px 10px 7px;
+  display:flex;flex-direction:column;gap:3px;overflow:visible;
+}
+.stocks-header{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1a1a1a;flex-shrink:0;}
+.stocks-header .stocks-chevron{color:rgba(0,0,0,0.4);margin-left:1px;}
+/* Body holds the scrolling cards (+ the watchlist search on the right) */
+.stocks-body{display:flex;flex:1;min-height:0;gap:8px;align-items:stretch;}
+/* Show 3 cards at a time; any extras scroll horizontally. Small top pad leaves
+   room for the watchlist remove-× without pushing the cards down. */
+.stocks-row{display:flex;flex:1;gap:7px;min-height:0;overflow-x:auto;overflow-y:visible;padding-top:3px;scrollbar-width:none;}
+.stocks-row::-webkit-scrollbar{display:none;}
+.stocks-loading{flex:1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:rgba(0,0,0,0.4);}
+.stock-item{
+  flex:1 0 calc((100% - 14px) / 3);min-width:0;position:relative;overflow:visible;
+  display:flex;flex-direction:column;gap:1px;
+  background:rgba(0,0,0,0.04);border-radius:10px;padding:6px 8px 16px;
+}
+/* Top row: index name (left) + change% (right), like the reference */
+.stock-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;flex-shrink:0;}
+.stock-name{flex:1;min-width:0;font-size:10px;font-weight:700;color:rgba(0,0,0,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em;line-height:1.3;}
+.stock-change{flex-shrink:0;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2;}
+.stock-change.up{color:#16a34a;}
+.stock-change.down{color:#dc2626;}
+.stock-price{flex-shrink:0;font-size:14px;font-weight:800;color:#111;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.stock-spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px;pointer-events:none;opacity:0.95;}
+
+/* ═══ WIDGET PICKER ═══ */
+.widget-picker{
+  position:absolute;top:2px;right:0;z-index:40;width:150px;box-sizing:border-box;
+  background:#ffffff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:6px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.28);
+  display:flex;flex-direction:column;gap:2px;
+  animation:wp-in .16s var(--ease);
+}
+@keyframes wp-in{from{opacity:0;transform:translateY(-6px) scale(0.97);}to{opacity:1;transform:none;}}
+.wp-title{font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px 3px;}
+.wp-item{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#111;transition:background .15s ease;}
+.wp-item:hover{background:rgba(0,0,0,0.06);}
+.wp-name{flex:1;}
+.wp-check{color:#0a84ff;font-weight:800;opacity:0;}
+.wp-item.selected .wp-check{opacity:1;}
+
+/* ═══ STOCKS: market/watchlist dropdown ═══ */
+.stocks-header{position:relative;}
+.stocks-mode-btn{
+  display:flex;align-items:center;gap:3px;
+  background:none;border:none;padding:0;margin:0;cursor:pointer;
+  font-size:12px;font-weight:700;color:#1a1a1a;line-height:1;
+}
+.stocks-mode-btn .stocks-chevron{color:rgba(0,0,0,0.4);transition:transform .18s ease;}
+.stocks-mode-btn.open .stocks-chevron{transform:rotate(180deg);}
+.stocks-mode-menu{
+  position:absolute;top:22px;left:18px;z-index:45;width:150px;box-sizing:border-box;
+  background:#ffffff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:4px;
+  box-shadow:0 10px 26px rgba(0,0,0,0.28);
+  flex-direction:column;gap:1px;
+  animation:wp-in .15s var(--ease);
+}
+.sm-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600;color:#1a1a1a;transition:background .12s ease;}
+.sm-item:hover{background:rgba(0,0,0,0.06);}
+.sm-name{flex:1;}
+.sm-check{color:#0a84ff;font-weight:800;opacity:0;}
+.sm-item.selected .sm-check{opacity:1;}
+
+/* ═══ STOCKS: watchlist search (small grey pill, docked right) ═══ */
+.watchlist-add{
+  display:flex;align-items:center;gap:4px;flex-shrink:0;box-sizing:border-box;
+  align-self:center;width:92px;height:22px;padding:0 8px;border-radius:99px;
+  background:#eceded;border:1px solid rgba(0,0,0,0.06);
+}
+.watchlist-add:focus-within{background:#e4e6e7;border-color:rgba(0,0,0,0.12);}
+.wl-search-ic{color:rgba(0,0,0,0.45);flex-shrink:0;cursor:pointer;}
+.watchlist-add input{
+  flex:1;min-width:0;height:100%;box-sizing:border-box;
+  border:none;background:transparent;padding:0;
+  font-size:11px;font-weight:600;color:#111;outline:none;text-transform:uppercase;
+}
+.watchlist-add input::placeholder{color:rgba(0,0,0,0.4);text-transform:none;font-weight:500;}
+
+/* Remove (×) — white × on a red circle, pinned to the card's corner */
+.stock-remove{
+  position:absolute;top:-3px;right:-3px;z-index:4;
+  width:17px;height:17px;border-radius:50%;border:none;cursor:pointer;
+  background:#e0342b;color:#fff;
+  font-size:13px;line-height:1;font-weight:700;
+  display:none;align-items:center;justify-content:center;padding:0 0 1px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.35);
+}
+.stock-item:hover .stock-remove{display:flex;}
+.stock-remove:hover{background:#c22a22;}
+
+/* ═══ WIDGET CAROUSEL ═══ */
+.widget-nav{
+  position:absolute;right:-22px;top:66%;transform:translateY(-50%);
+  z-index:12;border:none;cursor:pointer;background:none;padding:0;
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+  transition:transform .15s ease;
+}
+.widget-nav:hover{transform:translateY(-50%) scale(1.18);}
+.widget-nav:active{transform:translateY(-50%) scale(0.9);}
 .notch[data-state="music"] .dash-widgets, .notch[data-state="bt-music"] .dash-widgets {
  display: none !important;
 }
@@ -930,14 +1042,7 @@ html, body {
 .wf-icon { font-size: 14px; }
 .wf-temp { font-size: 12px; color: #fff; font-weight: 600; }
 
-/* Stocks Widget */
-.dash-stocks { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; gap: 8px; }
-.stock-item { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
-.stock-symbol { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 700; }
-.stock-price { font-size: 12px; color: #fff; font-weight: 600; }
-.stock-change { font-size: 10px; font-weight: 600; }
-.stock-change.positive { color: var(--green); }
-.stock-change.negative { color: var(--red); }
+/* (Legacy stocks stub removed — styles now live in the STOCKS WIDGET section above) */
 
 /* Sports Widget */
 .dash-sports { display: flex; flex-direction: column; justify-content: center; background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 12px; }

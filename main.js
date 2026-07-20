@@ -210,10 +210,12 @@ function createWindow() {
       sysBuffer = lines.pop();
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed.startsWith('VOL|')) {
-          safeSend('sys-vol', parseInt(trimmed.substring(4)));
-        } else if (trimmed.startsWith('VOL_FLYOUT|')) {
+        if (trimmed.startsWith('VOL_FLYOUT|')) {
+          // Only a real volume-key press (Windows flyout) shows the notch.
           safeSend('sys-vol', parseInt(trimmed.substring(11)));
+        } else if (trimmed.startsWith('VOL|')) {
+          // Volume changed by some other means (app/programmatic) — ignore so
+          // the slider notch only appears when the user presses a volume key.
         } else if (trimmed.startsWith('BRIGHT|')) {
           safeSend('sys-bright', parseInt(trimmed.substring(7)));
         } else if (trimmed.startsWith('DND|')) {
@@ -728,9 +730,10 @@ function createHiddenWindows() {
   });
   sess.setPermissionCheckHandler(() => true);
 
-  // Use a real Chrome user agent — Electron's default UA contains "Electron/28"
-  // which causes Google to block or throttle features like the QR code canvas.
-  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.291 Safari/537.36';
+  // Use a plain Chrome user agent (strip Electron's "Electron/xx" token, which
+  // makes Google treat us as unsupported and skip the QR). Keep the version in
+  // sync with the bundled Chromium (Electron 34 = Chromium 132).
+  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
   const commonOptions = {
     width: 1000, height: 800,
@@ -955,6 +958,69 @@ app.whenReady().then(() => {
         });
       } catch (e) { resolve(null); }
     });
+  });
+
+  // ─── Stocks (realtime market data via Yahoo Finance) ───
+  let _yf = null;
+  const getYF = () => {
+    if (!_yf) {
+      const YahooFinance = require('yahoo-finance2').default;
+      _yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+    }
+    return _yf;
+  };
+  ipcMain.handle('get-stocks', async (_e, opts) => {
+    const DEFAULT = [
+      { symbol: '^GSPC', label: 'S&P 500' },
+      { symbol: '^DJI',  label: 'DOW' },
+      { symbol: '^IXIC', label: 'NASDAQ' },
+    ];
+    // Watchlist mode passes { symbols: ['AAPL', ...] }; labels come from Yahoo.
+    let tickers = DEFAULT;
+    if (opts && Array.isArray(opts.symbols) && opts.symbols.length) {
+      tickers = opts.symbols
+        .map(s => String(s || '').trim().toUpperCase())
+        .filter(Boolean)
+        .map(s => ({ symbol: s, label: s })); // show the ticker in the narrow card
+    }
+    const yf = getYF();
+    const results = await Promise.all(tickers.map(async (t) => {
+      try {
+        const q = await yf.quote(t.symbol);
+        const prevClose = q.regularMarketPreviousClose ?? q.chartPreviousClose ?? null;
+        let spark = [];
+        try {
+          // Today's intraday shape: 5-minute closes since midnight.
+          const start = new Date(); start.setHours(0, 0, 0, 0);
+          const ch = await yf.chart(t.symbol, { period1: start, interval: '5m' });
+          spark = (ch.quotes || []).map(p => p.close).filter(v => v != null);
+        } catch (e) {}
+        // Anchor the line at yesterday's close so its direction (and the color
+        // we pick from changePct) always agree with the day's actual movement.
+        if (prevClose != null) spark = [prevClose, ...spark];
+        // Weekend / holiday / pre-market: fall back to a short daily history.
+        if (spark.length < 2) {
+          try {
+            const ch2 = await yf.chart(t.symbol, {
+              period1: new Date(Date.now() - 7 * 24 * 3600 * 1000),
+              interval: '1d',
+            });
+            spark = (ch2.quotes || []).map(p => p.close).filter(v => v != null);
+          } catch (e) {}
+        }
+        return {
+          symbol: t.symbol,
+          label: t.label || q.shortName || q.symbol || t.symbol,
+          price: q.regularMarketPrice ?? null,
+          change: q.regularMarketChange ?? null,
+          changePct: q.regularMarketChangePercent ?? null,
+          spark,
+        };
+      } catch (e) {
+        return { symbol: t.symbol, label: t.label || t.symbol, price: null, change: null, changePct: null, spark: [] };
+      }
+    }));
+    return results;
   });
 
   const { onMediaUpdate } = require('./modules/media');
