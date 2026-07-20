@@ -2212,15 +2212,35 @@ async function fetchRecording() {
   }
   if (window.notchAPI.onBluetoothUpdate) window.notchAPI.onBluetoothUpdate(showBluetoothToast);
   if (window.notchAPI.onMediaUpdate) window.notchAPI.onMediaUpdate(handleMediaUpdate);
+  // Face ID notch: shared by the lock screen (lock-monitor) and by the Windows
+  // Hello passkey prompt / Face ID setup (hello-monitor).
+  let faceScanSafety = null;
+  function faceScanStart() {
+    clearTimeout(faceScanSafety);
+    notch.classList.remove('success');
+    setState('unlock'); expand();
+    // Safety: if we never get a "done" signal, don't stay stuck scanning.
+    faceScanSafety = setTimeout(faceScanSuccess, 20000);
+  }
+  function faceScanSuccess() {
+    clearTimeout(faceScanSafety);
+    if (currentState !== 'unlock') return; // nothing to finish
+    notch.classList.add('success');
+    setTimeout(() => { collapse(); notch.classList.remove('success'); setTimeout(decideState, 400); }, 1200);
+  }
+
   if (window.notchAPI.onLockUpdate) {
     window.notchAPI.onLockUpdate(e => {
-      if (e === 'LOCK') {
-        notch.classList.remove('success');
-        setState('unlock'); expand();
-      } else if (e === 'UNLOCK') {
-        notch.classList.add('success');
-        setTimeout(() => { collapse(); notch.classList.remove('success'); setTimeout(decideState, 400); }, 1200);
-      }
+      if (e === 'LOCK') faceScanStart();
+      else if (e === 'UNLOCK') faceScanSuccess();
+    });
+  }
+
+  // Windows Hello passkey prompt / Face ID enrollment → same animation.
+  if (window.notchAPI.onFaceIdScan) {
+    window.notchAPI.onFaceIdScan(e => {
+      if (e === 'START') faceScanStart();
+      else if (e === 'STOP') faceScanSuccess();
     });
   }
 

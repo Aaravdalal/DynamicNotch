@@ -201,6 +201,22 @@ function createWindow() {
       }
     });
 
+    // Start Windows Hello / Face ID watcher — fires the notch's Face ID animation
+    // when the Windows Security passkey prompt (e.g. Google sign-in with face) or
+    // the Hello facial-recognition setup window appears.
+    const helloMonitorProc = spawnTracked('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'hello-monitor.ps1')], { windowsHide: true });
+    let helloBuffer = '';
+    helloMonitorProc.stdout.on('data', (data) => {
+      helloBuffer += data.toString();
+      const lines = helloBuffer.split(/\r?\n/);
+      helloBuffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === 'FACE:START') safeSend('faceid-scan', 'START');
+        else if (trimmed === 'FACE:STOP') safeSend('faceid-scan', 'STOP');
+      }
+    });
+
     // Start Sys Monitor (Volume & Brightness)
     const sysMonitorProc = spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [], { windowsHide: true });
     let sysBuffer = '';
