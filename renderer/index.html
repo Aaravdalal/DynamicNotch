@@ -5,11 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dynamic Notch</title>
   <link rel="stylesheet" href="styles.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+  <!-- No webfont / CDN script in <head>: both blocked first paint, and on a cold
+       start the notch painted its idle clock before the startup animation could
+       begin. Lottie is loaded once at the end of <body> instead. -->
 </head>
 <body>
-    <div id="notch" class="notch collapsed" data-state="idle">
+    <!-- Starts in the boot state so the very first paint is a bare notch that
+         expands into the startup animation — never the clock or dashboard. -->
+    <div id="notch" class="notch collapsed boot" data-state="startup">
       <!-- ═══ COLLAPSED BAR ═══ -->
       <div class="collapsed-view" id="collapsedView">
         <div class="c-left">
@@ -62,7 +65,7 @@
             </svg>
           </div>
           <!-- Timer Collapsed -->
-          <div class="c-timer" id="cTimer" style="display: none; align-items: center; gap: 6px; color: #f97316;">
+          <div class="c-timer" id="cTimer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             <span id="cTimerTime" style="font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums;">0:00</span>
           </div>
@@ -86,7 +89,7 @@
             <div class="dash-header" style="display: flex; margin-bottom: 8px; align-items: center;">
               <!-- Left side matching Music Column width (310px) -->
               <div class="dash-header-left" style="flex: 0 0 260px; display: flex; align-items: center; padding-right: 8px;">
-                <div class="dash-icons" style="display: flex; gap: 16px; color: rgba(255,255,255,0.5);">
+                <div class="dash-icons" style="display: flex; gap: 14px; color: rgba(255,255,255,0.5);">
                   <svg id="dashHomeBtn" style="cursor: pointer;" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/> <!-- Home -->
                   </svg>
@@ -98,8 +101,19 @@
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                     <circle cx="12" cy="13" r="4"></circle> <!-- Camera -->
                   </svg>
+                  <svg id="dashOpenTasksBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Tasks">
+                    <polyline points="3 7 5 9 9 5"></polyline>
+                    <polyline points="3 17 5 19 9 15"></polyline>
+                    <line x1="13" y1="7" x2="21" y2="7"></line>
+                    <line x1="13" y1="17" x2="21" y2="17"></line> <!-- Tasks -->
+                  </svg>
+                  <svg id="dashOpenTimerBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Timer">
+                    <circle cx="12" cy="13" r="8"></circle>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="9" y1="2" x2="15" y2="2"></line> <!-- Timer -->
+                  </svg>
                 </div>
-                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: 180px; letter-spacing: -0.01em; white-space: nowrap;" id="bigTime">1:47 PM</div>
+                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: 108px; letter-spacing: -0.01em; white-space: nowrap;" id="bigTime">1:47 PM</div>
               </div>
               
               <!-- Right side matching Widgets Column -->
@@ -349,6 +363,42 @@
         </div>
       </div>
 
+      <!-- ═══ PANEL: TASKS ═══ -->
+      <div class="panel panel-tasks" id="panelTasks">
+        <div class="tasks-head">
+          <span class="tasks-title">Tasks</span>
+          <span class="tasks-count" id="tasksCount">0 left</span>
+          <div class="tasks-close" id="tasksCloseBtn" title="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </div>
+        </div>
+        <div class="tasks-input-row">
+          <div class="tasks-bar">
+            <input id="taskInput" class="tasks-input" type="text" placeholder="Add a task" spellcheck="false" maxlength="120" />
+          </div>
+          <button id="taskAddBtn" class="tasks-add" title="Add task">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+        <div class="tasks-list" id="tasksList"></div>
+      </div>
+
+      <!-- ═══ PANEL: TIMER SETUP (wheel picker) ═══ -->
+      <div class="panel panel-timer-setup" id="panelTimerSetup">
+        <div class="tp-wrap">
+          <div class="tp-highlight"></div>
+          <div class="tp-col" id="tpHours"   data-unit="hours"><div class="tp-items"></div></div>
+          <div class="tp-col" id="tpMinutes" data-unit="min"><div class="tp-items"></div></div>
+          <div class="tp-col" id="tpSeconds" data-unit="sec"><div class="tp-items"></div></div>
+        </div>
+        <div class="tp-actions">
+          <button id="tpStartBtn" class="tp-start">Start</button>
+        </div>
+        <div class="tp-close" id="tpCancelBtn" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </div>
+      </div>
+
       <!-- ═══ PANEL: HOVER TICKLES ═══ -->
       <div class="panel panel-hover" id="panelHoverToggles">
         <div class="hover-toggles">
@@ -519,8 +569,8 @@
         </div>
         
         <div class="timer-right" style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-weight: 500; font-size: 13px; color: #f97316;">Timer</span>
-          <span id="timerText" style="font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: #f97316; margin-top: -2px;">0:00</span>
+          <span id="timerLabel" style="font-weight: 500; font-size: 13px; color: #f97316;">Timer</span>
+          <span id="timerText" style="font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: #f97316; margin-top: -2px; white-space: nowrap;">0:00</span>
         </div>
       </div>
 

@@ -33,35 +33,19 @@ let isTimerPaused = false;
 let localTimerTotal = 0;
 let localTimerElapsed = 0;
 let localTimerInterval = null;
+let alarmActive = false; // timer has fired and is ringing until dismissed
 
 const notch = document.getElementById('notch');
 const collapsedView = document.getElementById('collapsedView');
 
-// --- External Timers Sync ---
-let lastExternalSyncTime = 0;
+// --- External monitor events (mic / recording) ---
 window.notchAPI.onExternalTimerUpdate((data) => {
-  const now = Date.now();
-  if (data.type === 'chrome' || data.type === 'focus') {
-    if (data.seconds > 0) {
-      if (!isTimerActive) {
-        startTimer(data.seconds);
-      } else {
-        const currentRemaining = localTimerTotal - Math.floor(localTimerElapsed / 1000);
-        if (Math.abs(currentRemaining - data.seconds) > 1 || isTimerPaused !== (data.state === 'PAUSED')) {
-          localTimerTotal = data.seconds;
-          localTimerElapsed = 0;
-          isTimerPaused = (data.state === 'PAUSED');
-          updateTimerUI();
-        }
-      }
-      lastExternalSyncTime = now;
-    }
-  } else if (data.type === 'none_timer') {
-    if (isTimerActive && (now - lastExternalSyncTime > 1500)) {
-      isTimerActive = false;
-      clearInterval(localTimerInterval);
-      decideState();
-    }
+  // The timer notch is driven solely by the notch's own timer picker. Timers
+  // running elsewhere (a "timer" Google search, the Focus/Clock app) are ignored
+  // outright — they used to take over the notch, and their polling would resync
+  // or cancel a timer set here. Mic/recording events below still flow through.
+  if (data.type === 'chrome' || data.type === 'focus' || data.type === 'none_timer') {
+    return;
   } else if (data.type === 'mic_active') {
     // Don't show recording panel for voice search
     if (isVoiceSearchActive) return;
@@ -162,6 +146,8 @@ const panelMap = {
   'file-tray':     'panelIdle',
   video:           'panelVideo',
   camera:          'panelCamera',
+  tasks:           'panelTasks',
+  'timer-setup':   'panelTimerSetup',
   dnd:             'panelDnd',
   'msg-mini':      'panelMsgMini',
   'msg-expanded':  'panelMsgExpanded',
@@ -173,7 +159,9 @@ const panelMap = {
 function hideAllPanels() {
   Object.values(panelMap).forEach(id => {
     const el = document.getElementById(id);
-    if (el) { 
+    if (el) {
+      el.classList.remove('shown');
+      el.classList.add('leaving');
       el.style.opacity = '0';
       setTimeout(() => {
         if (el.style.opacity === '0') {
@@ -192,7 +180,12 @@ function showActivePanel() {
       if (id === activeId) {
         if (el.style.display !== 'flex') {
           el.style.display = 'flex';
+          // Force a layout read so the entry transition starts from its
+          // pre-morph state instead of being collapsed into the same frame.
+          void el.offsetHeight;
         }
+        el.classList.remove('leaving');
+        el.classList.add('shown');
         el.style.opacity = '1';
         
         // Dynamically adjust height for message expansion
@@ -202,6 +195,8 @@ function showActivePanel() {
           });
         }
       } else {
+        el.classList.remove('shown');
+        el.classList.add('leaving');
         el.style.opacity = '0';
         setTimeout(() => {
           if (el.style.opacity === '0') {
@@ -212,7 +207,9 @@ function showActivePanel() {
     }
   });
   
-  if (activeId !== 'panelMsgExpanded') {
+  if (activeId === 'panelTasks') {
+    layoutTasksPanel();
+  } else if (activeId !== 'panelMsgExpanded') {
     notch.style.height = '';
   }
   
@@ -283,7 +280,9 @@ let faceScanActive = false;
 function decideState() {
   if (faceScanActive) return; // Protect the Face ID scan animation
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
+  if (forcedPanel === 'panelTimer') return; // "Time's up" hold owns the notch
   if (currentState === 'file-tray' || currentState === 'video' || currentState === 'camera') return; // Don't override active states
+  if (currentState === 'tasks' || currentState === 'timer-setup') return; // User is editing tasks / picking a duration
   if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads' || currentState === 'startup') return; // Protect message and startup states
 
   let s = 'idle';
@@ -300,6 +299,7 @@ function decideState() {
   
   setState(s);
 
+  // A running timer keeps its full panel (pause / ✕ / countdown) on screen.
   if (s === 'recording' || s === 'timer') {
     if (!isExpanded) expand();
   }
@@ -326,9 +326,12 @@ function expand() {
 
 function collapse() {
   if (!isExpanded) return;
-  if (currentState === 'recording' || currentState === 'timer' || currentState === 'startup') return; // Force keep expanded
+  if (currentState === 'recording' || currentState === 'startup') return; // Force keep expanded
+  if (alarmActive) return; // Ringing timer stays open so the ✕ is always reachable
+  if (currentState === 'timer' && isTimerActive) return; // Running timer keeps its full panel
   isExpanded = false;
   forcedPanel = null; // Reset pin
+  notch.style.height = ''; // Drop any panel-driven height (tasks / expanded message)
   if (currentState === 'file-tray') currentState = 'idle';
   if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads') currentState = 'idle';
   hideAllPanels();
@@ -466,6 +469,10 @@ function handleNotchLeave() {
   if (currentState === 'file-tray' && isDragActive) return;
   if (currentState === 'recording') return;
   if (currentState === 'camera') return; // Camera stays open until explicitly closed
+  if (alarmActive) return; // Ringing timer stays open until dismissed
+  // Tasks / timer picker close via their own buttons — a stray mouse drift while
+  // typing a task or spinning a wheel must not throw the panel away.
+  if (currentState === 'tasks' || currentState === 'timer-setup') return;
   if (isDraggingSlider) return; // Don't collapse while dragging the vol/bright slider
   if (ignoreMouseLeave) return;
 
@@ -639,6 +646,24 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       e.stopPropagation();
       if (currentState === 'camera' && isExpanded) { closeCamera(); return; }
       openCamera();
+    });
+  }
+
+  const dashOpenTasksBtn = document.getElementById('dashOpenTasksBtn');
+  if (dashOpenTasksBtn) {
+    dashOpenTasksBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (currentState === 'tasks' && isExpanded) { closeTasksPanel(); return; }
+      openTasksPanel();
+    });
+  }
+
+  const dashOpenTimerBtn = document.getElementById('dashOpenTimerBtn');
+  if (dashOpenTimerBtn) {
+    dashOpenTimerBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (currentState === 'timer-setup' && isExpanded) { closeTimerPicker(); return; }
+      openTimerPicker();
     });
   }
 
@@ -1396,7 +1421,7 @@ function startTimer(seconds) {
       if (localTimerElapsed >= localTimerTotal) {
         isTimerActive = false;
         clearInterval(localTimerInterval);
-        decideState();
+        onTimerFinished(); // holds the panel open and runs decideState itself
       } else {
         updateTimerUI();
       }
@@ -1405,15 +1430,23 @@ function startTimer(seconds) {
   decideState();
 }
 
+function formatTimerClock(totalSeconds) {
+  const rem = Math.max(0, totalSeconds);
+  const h = Math.floor(rem / 3600);
+  const m = Math.floor(rem / 60) % 60;
+  const s = rem % 60;
+  const ss = s.toString().padStart(2, '0');
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${ss}`;
+  return `${m}:${ss}`;
+}
+
 function updateTimerUI() {
-  const rem = localTimerTotal - localTimerElapsed;
-  const mm = Math.floor(rem / 60);
-  const ss = (rem % 60).toString().padStart(2, '0');
+  const txtStr = formatTimerClock(localTimerTotal - localTimerElapsed);
   const txt = document.getElementById('timerText');
-  if (txt) txt.textContent = `${mm}:${ss}`;
-  
+  if (txt) txt.textContent = txtStr;
+
   const cTxt = document.getElementById('cTimerTime');
-  if (cTxt) cTxt.textContent = `${mm}:${ss}`;
+  if (cTxt) cTxt.textContent = txtStr;
 
   const icon = document.getElementById('timerPauseIcon');
   if (icon) {
@@ -1426,6 +1459,342 @@ function updateTimerUI() {
 }
 
 window.startTimer = startTimer;
+
+/*  Tasks  */
+let tasks = [];
+try { tasks = JSON.parse(localStorage.getItem('notchTasks') || '[]') || []; } catch (e) { tasks = []; }
+
+function saveTasks() {
+  try { localStorage.setItem('notchTasks', JSON.stringify(tasks)); } catch (e) {}
+}
+
+function renderTasks() {
+  const list = document.getElementById('tasksList');
+  const panel = document.getElementById('panelTasks');
+  const count = document.getElementById('tasksCount');
+  if (!list || !panel) return;
+
+  list.innerHTML = '';
+  tasks.forEach(task => {
+    const row = document.createElement('div');
+    row.className = 'task-row' + (task.done ? ' done' : '');
+
+    const check = document.createElement('div');
+    check.className = 'task-check';
+    check.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    check.addEventListener('click', e => {
+      e.stopPropagation();
+      task.done = !task.done;
+      saveTasks();
+      renderTasks();
+    });
+
+    const text = document.createElement('div');
+    text.className = 'task-text';
+    text.textContent = task.text;
+    text.title = task.text;
+
+    const del = document.createElement('div');
+    del.className = 'task-del';
+    del.title = 'Delete task';
+    del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      tasks = tasks.filter(t => t.id !== task.id);
+      saveTasks();
+      renderTasks();
+    });
+
+    row.appendChild(check);
+    row.appendChild(text);
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+
+  panel.classList.toggle('is-empty', tasks.length === 0);
+  if (count) {
+    const left = tasks.filter(t => !t.done).length;
+    count.textContent = left === 1 ? '1 left' : left + ' left';
+  }
+  layoutTasksPanel();
+}
+
+// The notch hugs its content: header + search bar, plus one row per task.
+// Beyond TASKS_MAX_ROWS the list scrolls instead of growing further.
+const TASKS_BASE_H = 106;   // padding + header + input row
+const TASKS_ROW_H = 32;
+const TASKS_ROW_GAP = 4;
+const TASKS_MAX_ROWS = 5;
+
+function layoutTasksPanel() {
+  if (currentState !== 'tasks') return;
+  const rows = Math.min(tasks.length, TASKS_MAX_ROWS);
+  const listH = rows > 0 ? rows * TASKS_ROW_H + (rows - 1) * TASKS_ROW_GAP : 0;
+  notch.style.height = (TASKS_BASE_H + listH) + 'px';
+}
+
+// Return to the expanded dashboard rather than shrinking the notch away —
+// closing a sub-panel should feel like stepping back, not dismissing.
+function goHomeView() {
+  forcedPanel = null;
+  currentState = 'idle';
+  notch.setAttribute('data-state', 'idle');
+  notch.style.height = '';
+  if (!isExpanded) expand();
+  decideState();
+  showActivePanel();
+}
+
+function addTaskFromInput() {
+  const input = document.getElementById('taskInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  tasks.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), text, done: false });
+  input.value = '';
+  saveTasks();
+  renderTasks();
+  const list = document.getElementById('tasksList');
+  if (list) list.scrollTop = list.scrollHeight;
+}
+
+function setupTasksPanel() {
+  const addBtn = document.getElementById('taskAddBtn');
+  const input = document.getElementById('taskInput');
+  const closeBtn = document.getElementById('tasksCloseBtn');
+
+  if (addBtn) addBtn.addEventListener('click', e => { e.stopPropagation(); addTaskFromInput(); });
+  if (input) {
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') addTaskFromInput();
+      else if (e.key === 'Escape') closeTasksPanel();
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener('click', e => { e.stopPropagation(); closeTasksPanel(); });
+
+  renderTasks();
+}
+
+function openTasksPanel() {
+  forcedPanel = 'panelTasks';
+  currentState = 'tasks';
+  notch.setAttribute('data-state', 'tasks');
+  renderTasks();
+  if (!isExpanded) expand(); else showActivePanel();
+  setTimeout(() => {
+    const input = document.getElementById('taskInput');
+    if (input) input.focus();
+  }, 260);
+}
+
+function closeTasksPanel() {
+  const input = document.getElementById('taskInput');
+  if (input) { input.value = ''; input.blur(); }
+  goHomeView();
+}
+
+/*  Timer picker (iOS-style wheels)  */
+const TP_ITEM_H = 36;
+const tpCols = [
+  { id: 'tpHours',   max: 23 },
+  { id: 'tpMinutes', max: 59 },
+  { id: 'tpSeconds', max: 59 }
+];
+let tpBuilt = false;
+
+function tpSelectedValue(col) {
+  return Math.max(0, Math.min(col.max, Math.round(col.el.scrollTop / TP_ITEM_H)));
+}
+
+function tpPaint(col) {
+  const sel = tpSelectedValue(col);
+  col.items.forEach((item, i) => item.classList.toggle('sel', i === sel));
+  return sel;
+}
+
+function tpRefreshStartBtn() {
+  const btn = document.getElementById('tpStartBtn');
+  if (btn) btn.disabled = tpTotalSeconds() === 0;
+}
+
+function tpTotalSeconds() {
+  const [h, m, s] = tpCols.map(col => (col.el ? tpSelectedValue(col) : 0));
+  return h * 3600 + m * 60 + s;
+}
+
+function tpScrollTo(col, value, smooth) {
+  col.el.scrollTo({ top: value * TP_ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function buildTimerPicker() {
+  if (tpBuilt) return;
+  tpCols.forEach(col => {
+    const el = document.getElementById(col.id);
+    if (!el) return;
+    col.el = el;
+    const holder = el.querySelector('.tp-items');
+    col.items = [];
+    for (let v = 0; v <= col.max; v++) {
+      const item = document.createElement('div');
+      item.className = 'tp-item';
+      item.textContent = v;
+      // Clicking a row scrolls it into the selection pill rather than requiring a drag.
+      item.addEventListener('click', e => { e.stopPropagation(); tpScrollTo(col, v, true); });
+      holder.appendChild(item);
+      col.items.push(item);
+    }
+    let settle = null;
+    el.addEventListener('scroll', () => {
+      tpPaint(col);
+      tpRefreshStartBtn();
+      // Snap-to-row after the wheel comes to rest (scroll-snap alone leaves
+      // sub-pixel offsets when the user flicks).
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        const sel = tpSelectedValue(col);
+        if (Math.abs(el.scrollTop - sel * TP_ITEM_H) > 1) tpScrollTo(col, sel, true);
+      }, 120);
+    });
+    // Vertical wheel over a column moves it one row at a time.
+    el.addEventListener('wheel', e => { e.stopPropagation(); }, { passive: true });
+  });
+  tpBuilt = true;
+}
+
+function setupTimerPicker() {
+  buildTimerPicker();
+  const startBtn = document.getElementById('tpStartBtn');
+  const cancelBtn = document.getElementById('tpCancelBtn');
+  if (startBtn) {
+    startBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const total = tpTotalSeconds();
+      if (total <= 0) return;
+      forcedPanel = null;
+      currentState = 'timer';
+      notch.setAttribute('data-state', 'timer');
+      startTimer(total);
+      showActivePanel();
+    });
+  }
+  if (cancelBtn) cancelBtn.addEventListener('click', e => { e.stopPropagation(); closeTimerPicker(); });
+}
+
+function openTimerPicker() {
+  buildTimerPicker();
+  forcedPanel = 'panelTimerSetup';
+  currentState = 'timer-setup';
+  notch.setAttribute('data-state', 'timer-setup');
+  if (!isExpanded) expand(); else showActivePanel();
+  // Columns must be laid out (non-zero height) before scrollTop takes effect.
+  requestAnimationFrame(() => {
+    tpCols.forEach(col => {
+      if (!col.el) return;
+      tpScrollTo(col, 0, false); // every wheel starts at zero
+      tpPaint(col);
+    });
+    tpRefreshStartBtn();
+  });
+}
+
+function closeTimerPicker() {
+  goHomeView();
+}
+
+// Alarm chime, synthesised — the app ships no audio assets. A "duh duh duh"
+// triple beep that repeats until the user dismisses it with the ✕.
+let chimeCtx = null;
+let chimeOscs = [];
+let chimeLoop = null;
+const CHIME_PERIOD_MS = 1400;
+
+function playChimeGroup() {
+  if (!chimeCtx) return;
+  const ctx = chimeCtx;
+  const master = ctx.createGain();
+  master.gain.value = 0.25;
+  master.connect(ctx.destination);
+
+  const t0 = ctx.currentTime + 0.02;
+  for (let i = 0; i < 3; i++) {
+    const t = t0 + i * 0.17;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    // Percussive envelope: near-instant attack, exponential decay.
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(1, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t);
+    osc.stop(t + 0.18);
+    osc.addEventListener('ended', () => {
+      chimeOscs = chimeOscs.filter(o => o !== osc);
+    });
+    chimeOscs.push(osc);
+  }
+}
+
+function playTimerChime() {
+  stopTimerChime();
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    chimeCtx = new AC();
+    if (chimeCtx.state === 'suspended') chimeCtx.resume();
+    playChimeGroup();
+    chimeLoop = setInterval(playChimeGroup, CHIME_PERIOD_MS);
+  } catch (e) {
+    console.warn('[Timer] chime failed:', e);
+  }
+}
+
+function stopTimerChime() {
+  if (chimeLoop) { clearInterval(chimeLoop); chimeLoop = null; }
+  chimeOscs.forEach(osc => { try { osc.stop(); } catch (e) {} });
+  chimeOscs = [];
+  if (chimeCtx) {
+    try { chimeCtx.close(); } catch (e) {}
+    chimeCtx = null;
+  }
+}
+
+// Stop the countdown and step back to the dashboard. Also dismisses the alarm
+// if it fires while the "Time's up" panel is still up.
+function cancelTimer() {
+  isTimerActive = false;
+  isTimerPaused = false;
+  alarmActive = false;
+  notch.classList.remove('alarm');
+  clearInterval(localTimerInterval);
+  stopTimerChime();
+  const txt = document.getElementById('timerText');
+  if (txt) txt.textContent = '0:00'; // reset before the panel is reused
+  goHomeView();
+}
+
+// Nothing outside the notch knows about this timer, so the notch announces it
+// itself: it rings and stays open on "Time's up" until the ✕ is clicked, so the
+// alarm can't be missed and the dismiss button is always on screen.
+function onTimerFinished() {
+  isTimerPaused = false;
+  alarmActive = true;
+  notch.classList.add('alarm');
+  playTimerChime();
+
+  const txt = document.getElementById('timerText');
+  if (txt) txt.textContent = "Time's up";
+  const cTxt = document.getElementById('cTimerTime');
+  if (cTxt) cTxt.textContent = '0:00';
+
+  forcedPanel = 'panelTimer';
+  currentState = 'timer';
+  notch.setAttribute('data-state', 'timer');
+  if (!isExpanded) expand(); else showActivePanel();
+}
 
 async function fetchCalendar() {
   try {
@@ -2269,7 +2638,7 @@ async function fetchRecording() {
   if (timerPauseBtn) {
     timerPauseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      window.notchAPI.setSysVal('toggleChromeTimer', 'true');
+      if (!isTimerActive) return; // nothing to pause during the "Time's up" hold
       isTimerPaused = !isTimerPaused;
       updateTimerUI();
     });
@@ -2277,11 +2646,12 @@ async function fetchRecording() {
   if (timerCancelBtn) {
     timerCancelBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      isTimerActive = false;
-      clearInterval(localTimerInterval);
-      decideState();
+      cancelTimer();
     });
   }
+
+  setupTasksPanel();
+  setupTimerPicker();
   
   // Hook up Recording buttons (Visual & IPC)
   const recPauseBtn = document.getElementById('recPauseBtn');
@@ -3641,6 +4011,10 @@ function runStartupSequence() {
   const collapsedView = document.getElementById('collapsedView');
   if (collapsedView) collapsedView.style.display = 'none';
 
+  // Warm the hello animation now — it isn't needed until phase 4, and fetching
+  // it cold there stalled the morph on slow starts.
+  fetch('../assets/hello-white.json').catch(() => {});
+
   // Get references
   const panel = document.getElementById('panelStartup');
   const intro = document.getElementById('startupIntro');
@@ -3671,12 +4045,12 @@ function runStartupSequence() {
     setTimeout(() => {
       playAppleBootChime();
       if (intro) intro.style.opacity = '1';
-    }, 500);
+    }, 320);
 
     // Phase 3: Fade out image
     setTimeout(() => {
       if (intro) intro.style.opacity = '0';
-    }, 3800);
+    }, 3100);
 
     // Phase 4: Shrink notch and play hello animation
     setTimeout(() => {
@@ -3701,8 +4075,8 @@ function runStartupSequence() {
             path: '../assets/hello-white.json'
           });
         }
-      }, 500);
-    }, 4800);
+      }, 420);
+    }, 3900);
 
     // Phase 5: Fade out hello, then show normal expanded notch
     setTimeout(() => {
@@ -3711,6 +4085,7 @@ function runStartupSequence() {
       setTimeout(() => {
         // Clean up startup state
         currentState = 'idle';
+        notch.classList.remove('boot');
         notch.setAttribute('data-state', 'idle');
         notch.style.width = '';
         notch.style.height = '';
@@ -3729,8 +4104,8 @@ function runStartupSequence() {
         forcedPanel = null;
         showActivePanel();
         decideState();
-      }, 600);
-    }, 8500);
+      }, 520);
+    }, 7100);
   });
 }
 

@@ -96,6 +96,14 @@ html, body {
 .notch.expanded[data-state="low-battery"]{width:320px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="recording"]{width:260px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="timer"]{width:210px;height:52px;border-radius:0 0 22px 22px}
+/* "Time's up" needs more room than a countdown: widen and drop the "Timer"
+   label, otherwise the text wraps over the buttons. */
+.notch.alarm.expanded[data-state="timer"]{width:250px}
+.notch.alarm #timerLabel{display:none}
+.notch.alarm #timerText{font-size:20px;font-weight:600}
+/* Pull the text in off the right edge — the pill is space-between, so without
+   this "Time's up" sits hard against the notch corner. */
+.notch.alarm .timer-right{margin-right:30px}
 .notch.expanded[data-state="dnd"]{width:160px;height:52px;border-radius:0 0 22px 22px}
 /* Media player - compact standalone island mode */
 .notch.expanded[data-state="music"]{width:370px;height:140px;border-radius:0 0 32px 32px}
@@ -112,6 +120,8 @@ html, body {
 }
 .notch[data-state="music"] .collapsed-view{padding-left:10px}
 .notch.expanded .collapsed-view{opacity:0;pointer-events:none;position:absolute}
+/* Pre-startup: nothing but the bare black notch. */
+.notch.boot .collapsed-view{display:none}
 
 .c-left,.c-right{display:flex;align-items:center;gap:5px}
 .c-center{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px}
@@ -204,7 +214,8 @@ html, body {
 .c-bt-ring svg{width:100%;height:100%}
 .ring-bg{fill:none;stroke:rgba(255,255,255,.1);stroke-width:3}
 .ring-fill{fill:none;stroke:var(--green);stroke-width:3;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .6s ease}
-.ring-text{fill:#fff;font-size:11px;font-weight:700;font-family:'Inter',sans-serif}
+/* Was 'Inter' — a whole Google Fonts request for this one numeral. */
+.ring-text{fill:#fff;font-size:11px;font-weight:700}
 
 .notch[data-state="bt-connected"] .c-bt-spin,
 .notch[data-state="bt-connected"] .c-bt-name,
@@ -234,6 +245,9 @@ html, body {
   border-radius:inherit;overflow:hidden;
 }
 .notch.expanded .panel{pointer-events:all}
+/* An outgoing panel gets out of the way fast — sharing the incoming panel's
+   350ms/120ms-delay fade left both stacked on screen for the whole resize. */
+.panel.leaving{transition:opacity .11s linear}
 /* Video panel rules moved to top */
 .notch.expanded[data-state="idle"] .panel-idle,
 .notch.expanded[data-state="music"] .panel-idle,
@@ -336,6 +350,155 @@ html, body {
 }
 .panel-camera:hover .cam-close{opacity:1}
 .cam-close:hover{background:rgba(0,0,0,0.8)}
+
+/* ─── TASKS ─── */
+/* Height is set inline by layoutTasksPanel() so the notch hugs the task count. */
+.notch.expanded[data-state="tasks"]{width:420px;height:118px;border-radius:0 0 28px 28px}
+.notch.expanded[data-state="tasks"] #panelTasks{display:flex;opacity:1}
+.panel-tasks{
+  flex-direction:column;padding:14px 16px 12px;box-sizing:border-box;
+  pointer-events:auto;
+}
+
+/* Entry morph: the panel settles into place as the notch finishes resizing,
+   so it reads as one motion rather than a cut. */
+#panelTasks,#panelTimerSetup{
+  transform:translateY(7px) scale(.98);
+  transition:opacity .26s var(--ease) .1s, transform .38s var(--spring) .06s
+}
+#panelTasks.shown,#panelTimerSetup.shown{transform:none}
+#panelTasks.leaving,#panelTimerSetup.leaving{
+  transition:opacity .11s linear, transform .11s linear;
+  transform:translateY(-4px) scale(.99)
+}
+.tasks-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex:0 0 auto}
+.tasks-title{font-size:15px;font-weight:700;color:#fff;letter-spacing:-0.01em}
+.tasks-count{font-size:12px;font-weight:600;color:rgba(255,255,255,0.4)}
+.tasks-close{
+  margin-left:auto;width:22px;height:22px;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);transition:background .15s ease
+}
+.tasks-close:hover{background:rgba(255,255,255,0.18);color:#fff}
+/* Search-bar row: one white pill with the "+" tucked inside its right end.
+   Hovering the "+" makes it peel off into its own circle beside the bar. */
+.tasks-input-row{display:flex;align-items:center;flex:0 0 auto;margin-bottom:10px}
+.tasks-bar{
+  flex:1;min-width:0;height:38px;border-radius:19px;background:#fff;
+  display:flex;align-items:center;
+  box-shadow:0 1px 6px rgba(0,0,0,0.28);
+  transition:margin-right .28s var(--ease)
+}
+.tasks-input{
+  flex:1;min-width:0;height:100%;border:none;outline:none;background:transparent;
+  color:#202124;font-size:14px;font-weight:500;font-family:inherit;
+  padding:0 44px 0 18px;border-radius:19px;
+  transition:padding-right .28s var(--ease)
+}
+.tasks-input::placeholder{color:#80868b;font-weight:400}
+.tasks-add{
+  width:38px;height:38px;flex:0 0 auto;border:none;border-radius:50%;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  /* Pulled back over the bar's right end so it reads as part of the bar. */
+  margin-left:-38px;background:transparent;color:#5f6368;box-shadow:none;
+  transition:margin-left .34s var(--spring), background .2s var(--ease),
+             box-shadow .3s var(--ease), color .2s var(--ease), transform .34s var(--spring)
+}
+.tasks-add:hover{
+  margin-left:10px;background:#fff;color:#1a73e8;
+  box-shadow:0 2px 10px rgba(0,0,0,0.4);transform:scale(1.08)
+}
+/* Reclaim the reserved space inside the bar once the "+" has detached. */
+.tasks-input-row:has(.tasks-add:hover) .tasks-input{padding-right:18px}
+.tasks-list{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:4px;min-height:0}
+.tasks-list::-webkit-scrollbar{width:5px}
+.tasks-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:3px}
+/* Fixed row height keeps layoutTasksPanel()'s height math exact. */
+.task-row{
+  display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:9px;
+  height:32px;box-sizing:border-box;
+  background:rgba(255,255,255,0.04);flex:0 0 auto
+}
+.task-row:hover{background:rgba(255,255,255,0.08)}
+.task-check{
+  width:17px;height:17px;flex:0 0 auto;border-radius:50%;cursor:pointer;
+  border:2px solid rgba(255,255,255,0.35);
+  display:flex;align-items:center;justify-content:center;transition:all .15s ease
+}
+.task-check svg{opacity:0;transition:opacity .15s ease}
+.task-row.done .task-check{background:#22c55e;border-color:#22c55e}
+.task-row.done .task-check svg{opacity:1}
+.task-text{
+  flex:1;font-size:13px;font-weight:500;color:rgba(255,255,255,0.9);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.task-row.done .task-text{color:rgba(255,255,255,0.35);text-decoration:line-through}
+.task-del{
+  width:18px;height:18px;flex:0 0 auto;border-radius:50%;cursor:pointer;opacity:0;
+  display:flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,0.5);transition:opacity .15s ease,color .15s ease
+}
+.task-row:hover .task-del{opacity:1}
+.task-del:hover{color:var(--red)}
+.panel-tasks.is-empty .tasks-list{display:none}
+
+/* ─── TIMER SETUP (wheel picker) ─── */
+.notch.expanded[data-state="timer-setup"]{width:420px;height:264px;border-radius:0 0 28px 28px}
+.notch.expanded[data-state="timer-setup"] #panelTimerSetup{display:flex;opacity:1}
+.panel-timer-setup{
+  flex-direction:column;align-items:center;justify-content:center;
+  padding:10px 16px 12px;box-sizing:border-box;pointer-events:auto
+}
+.tp-wrap{
+  position:relative;display:flex;justify-content:center;
+  height:180px;width:100%;overflow:hidden;flex:0 0 auto
+}
+/* The selection pill sits behind the middle row, mirroring the iOS picker. */
+.tp-highlight{
+  position:absolute;left:8px;right:8px;top:72px;height:36px;
+  border-radius:10px;background:rgba(255,255,255,0.09);pointer-events:none
+}
+.tp-col{
+  position:relative;width:112px;height:180px;overflow-y:scroll;
+  scroll-snap-type:y mandatory;scrollbar-width:none;
+  /* Fade the rows furthest from the selection, like a physical wheel. */
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 26%,#000 74%,transparent);
+          mask-image:linear-gradient(to bottom,transparent,#000 26%,#000 74%,transparent)
+}
+.tp-col::-webkit-scrollbar{display:none}
+/* Unit label ("hours"/"min"/"sec") pinned to the selected row, not scrolling. */
+.tp-col::after{
+  content:attr(data-unit);position:absolute;pointer-events:none;
+  left:50%;top:50%;transform:translateY(-50%);margin-left:7px;
+  font-size:15px;font-weight:600;color:#fff;white-space:nowrap
+}
+.tp-items{padding:72px 0}
+.tp-item{
+  height:36px;display:flex;align-items:center;justify-content:flex-end;
+  /* Number ends left of centre, label starts right of it — 9px of air between. */
+  padding-right:calc(50% + 2px);scroll-snap-align:center;
+  font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;
+  color:rgba(255,255,255,0.28);transition:color .15s ease
+}
+.tp-item.sel{color:#fff}
+.tp-actions{display:flex;justify-content:center;margin-top:6px;flex:0 0 auto;width:100%}
+.tp-start{
+  border:none;border-radius:999px;height:36px;width:200px;cursor:pointer;padding:0;
+  background:#007aff;color:#fff;font-family:inherit;font-size:15px;font-weight:600;
+  letter-spacing:-0.01em;transition:background .15s ease,opacity .15s ease
+}
+.tp-start:hover{background:#1a88ff}
+.tp-start:active{background:#0069d9}
+.tp-start:disabled{background:#007aff;opacity:0.35;cursor:default}
+.tp-close{
+  position:absolute;top:12px;right:14px;width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;
+  background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);transition:background .15s ease
+}
+.tp-close:hover{background:rgba(255,255,255,0.18);color:#fff}
+
+/* Collapsed timer pill (shown by the [data-state="timer"] rule above) */
+.c-timer{display:none;align-items:center;gap:6px;color:#f97316}
 
 /* ─── HOVER TOGGLES ─── */
 .panel-hover{align-items:center;justify-content:center}
