@@ -11,6 +11,7 @@ let wasCharging = null;
 let showedLowBattery = false;
 let btToastTimeout = null;
 let battToastTimeout = null;
+let battToastState = null; // which battery pill the toast is showing
 let btConnectedDevice = null; // persistent BT state
 let calendarOffset = 0;
 let progressInterval = null;
@@ -141,6 +142,7 @@ const panelMap = {
   'bt-music':      'panelBtMusic',
   unlock:          'panelUnlock',
   charging:        'panelCharging',
+  unplugged:       'panelUnplugged',
   'low-battery':   'panelLowBattery',
   slider:          'panelSlider',
   'file-tray':     'panelIdle',
@@ -290,7 +292,9 @@ function decideState() {
   else if (isTimerActive) s = 'timer';
   // Only take over the collapsed pill — never hijack an already-expanded panel.
   else if (downloadActive && !isExpanded) s = 'download';
-  else if (battToastTimeout) s = 'battery';
+  // Use the specific toast state — a generic 'battery' has no panel in
+  // panelMap, so a background poll mid-toast would blank the notch.
+  else if (battToastTimeout) s = battToastState || 'charging';
   else if (btToastTimeout) s = 'bluetooth';
   else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
   else if (btConnectedDevice) s = 'bt-connected';
@@ -2283,7 +2287,7 @@ function handleBatteryEvent(bat) {
   const hitLow = isLow && !showedLowBattery;
   const isFirst = wasCharging === null;
 
-  if (plugChanged || hitLow || isFirst) showBatteryToast(bat);
+  if (plugChanged || hitLow || isFirst) showBatteryToast(bat, isFirst);
   if (isLow) showedLowBattery = true;
   if (bat.isCharging || bat.percent > 20) showedLowBattery = false;
   wasCharging = bat.isCharging;
@@ -2340,35 +2344,59 @@ function handleBatteryEvent(bat) {
   }
 }
 
-function showBatteryToast(bat) {
-  if (battToastTimeout) clearTimeout(battToastTimeout);
+function showBatteryToast(bat, isFirstReading) {
+  if (battToastTimeout) { clearTimeout(battToastTimeout); battToastTimeout = null; }
 
   // Don't interrupt startup animation
   if (currentState === 'startup') return;
 
+  const runToast = (state) => {
+    battToastState = state;
+    // Arm the timeout BEFORE expanding: expand() ends with decideState(), which
+    // reads battToastTimeout to decide the notch stays on the battery pill.
+    // Assigning it afterwards (as the original code did) meant decideState saw
+    // no toast in progress and immediately reset the notch back to idle — which
+    // is why the charging pill never actually showed up.
+    battToastTimeout = setTimeout(() => {
+      battToastTimeout = null;
+      battToastState = null;
+      collapse();
+      setTimeout(decideState, 400);
+    }, 4000);
+    setState(state);
+    if (!isExpanded) expand(); else showActivePanel();
+  };
+
   if (bat.isCharging) {
     document.getElementById('chargingPct').textContent = bat.percent + '%';
     document.getElementById('chargingBattFill').setAttribute('width', Math.max(1, (bat.percent/100)*15));
-    // Don't interrupt startup animation
-    if (currentState === 'startup') return;
-    setState('charging'); expand();
-    battToastTimeout = setTimeout(() => { battToastTimeout = null; collapse(); setTimeout(decideState, 400); }, 4000);
+    runToast('charging');
     return;
   }
 
   if (bat.percent <= 20) {
     document.getElementById('lowBattPct').textContent = bat.percent + '%';
     document.getElementById('lowBattFill').setAttribute('width', Math.max(1, (bat.percent/100)*15));
-    // Don't interrupt startup animation
-    if (currentState === 'startup') return;
-    setState('low-battery'); expand();
-    battToastTimeout = setTimeout(() => { battToastTimeout = null; collapse(); setTimeout(decideState, 400); }, 4000);
+    runToast('low-battery');
     return;
   }
 
-  // Unplugged normal
-  if (isExpanded) collapse();
-  decideState();
+  // Unplugged and healthy — say so, rather than silently collapsing. Skip it on
+  // the very first reading, or the notch would announce this at every launch.
+  if (isFirstReading) {
+    if (isExpanded) collapse();
+    decideState();
+    return;
+  }
+
+  const pct = document.getElementById('unpluggedPct');
+  const fill = document.getElementById('unpluggedBattFill');
+  if (pct) pct.textContent = bat.percent + '%';
+  if (fill) {
+    fill.setAttribute('width', Math.max(1, (bat.percent/100)*15));
+    fill.setAttribute('fill', bat.powerSaver ? '#fbbf24' : '#fff');
+  }
+  runToast('unplugged');
 }
 
 /* ─── Bluetooth ─── */
@@ -2467,6 +2495,7 @@ let unreadIndex = 0;
 // Tracks who a reply in the expanded panel should go to (set when a live
 // message arrives or an unread card is opened).
 let activeReplyContext = null;
+let pendingAttachment = null; // file path staged by the + button, sent with the reply
 
 function openUnreadForReply(item) {
   activeReplyContext = { sender: item.sender || null, app: item.app || null };
@@ -3622,43 +3651,88 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
     const replyBtn = document.getElementById('msgReplySendBtn');
     const replyAttach = document.getElementById('msgReplyAttach');
     
+    // The reply stays on screen until the extension confirms it landed, so a
+    // failed send is visible instead of silently vanishing.
+    function setReplyStatus(text, kind) {
+      const el = document.getElementById('msgReplyStatus');
+      if (!el) return;
+      el.textContent = text || '';
+      el.className = 'msg-reply-status' + (kind ? ' ' + kind : '');
+    }
+
+    function clearPendingAttachment() {
+      pendingAttachment = null;
+      const chip = document.getElementById('msgAttachChip');
+      if (chip) chip.classList.remove('visible');
+    }
+
     function handleSendReply() {
-      if (replyInput && replyInput.value.trim() !== '') {
-        const text = replyInput.value.trim();
-        if (window.notchAPI && window.notchAPI.sendReply) {
-          window.notchAPI.sendReply({
-            text,
-            sender: activeReplyContext ? activeReplyContext.sender : null,
-            app: activeReplyContext ? activeReplyContext.app : null
-          });
-        }
-        replyInput.value = '';
-        if (window.msgCollapseTimeout) {
-          clearTimeout(window.msgCollapseTimeout);
-          window.msgCollapseTimeout = null;
-        }
-        collapse();
-        setTimeout(decideState, 350);
+      const text = replyInput ? replyInput.value.trim() : '';
+      if (!text && !pendingAttachment) return;
+      if (!(window.notchAPI && window.notchAPI.sendReply)) return;
+
+      window.notchAPI.sendReply({
+        text,
+        attachment: pendingAttachment,
+        sender: activeReplyContext ? activeReplyContext.sender : null,
+        app: activeReplyContext ? activeReplyContext.app : null
+      });
+
+      if (replyInput) replyInput.value = '';
+      clearPendingAttachment();
+      setReplyStatus('Sending…', 'pending');
+      if (window.msgCollapseTimeout) {
+        clearTimeout(window.msgCollapseTimeout);
+        window.msgCollapseTimeout = null;
       }
+    }
+
+    if (window.notchAPI && window.notchAPI.onReplyStatus) {
+      window.notchAPI.onReplyStatus((status) => {
+        if (status && status.ok) {
+          setReplyStatus('Sent', 'ok');
+          setTimeout(() => {
+            setReplyStatus('');
+            if (currentState === 'msg-expanded' && !isMouseOverNotch) {
+              collapse();
+              setTimeout(decideState, 350);
+            }
+          }, 1200);
+        } else {
+          setReplyStatus((status && status.error) || 'Could not send', 'err');
+        }
+      });
     }
 
     if (replyAttach) {
       replyAttach.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (window.notchAPI && window.notchAPI.selectAttachment) {
-          const files = await window.notchAPI.selectAttachment();
-          if (files && files.length > 0) {
-            console.log('[App] Selected attachment:', files);
-            if (window.notchAPI && window.notchAPI.sendReply) {
-              window.notchAPI.sendReply({
-                attachment: files[0],
-                sender: activeReplyContext ? activeReplyContext.sender : null,
-                app: activeReplyContext ? activeReplyContext.app : null
-              });
-            }
-          }
+        if (!(window.notchAPI && window.notchAPI.selectAttachment)) return;
+        const files = await window.notchAPI.selectAttachment();
+        if (!files || !files.length) return;
+
+        // Attach it to the pending reply instead of firing it off immediately,
+        // so a caption can go with the picture.
+        pendingAttachment = files[0];
+        const chip = document.getElementById('msgAttachChip');
+        const thumb = document.getElementById('msgAttachThumb');
+        const name = document.getElementById('msgAttachName');
+        const fileName = pendingAttachment.split(/[\\/]/).pop();
+        if (name) name.textContent = fileName;
+        if (thumb) {
+          const isImage = /\.(png|jpe?g|gif|webp|bmp)$/i.test(fileName);
+          thumb.style.display = isImage ? 'block' : 'none';
+          if (isImage) thumb.src = 'file:///' + pendingAttachment.replace(/\\/g, '/');
         }
+        if (chip) chip.classList.add('visible');
+        setReplyStatus('');
+        if (replyInput) replyInput.focus();
       });
+    }
+
+    const attachRemove = document.getElementById('msgAttachRemove');
+    if (attachRemove) {
+      attachRemove.addEventListener('click', e => { e.stopPropagation(); clearPendingAttachment(); });
     }
 
     if (replyInput) {

@@ -62,6 +62,9 @@ contextBridge.exposeInMainWorld('notchAPI', {
     ipcRenderer.on('qr-update', (event, data) => callback(data));
   },
   sendReply: (payload) => ipcRenderer.send('send-reply', payload),
+  onReplyStatus: (callback) => {
+    ipcRenderer.on('reply-status', (event, data) => callback(data));
+  },
   onMockMessage: (callback) => {
     ipcRenderer.on('mock-message', () => callback());
   },

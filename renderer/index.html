@@ -85,35 +85,37 @@
 
       <!-- ═══ PANEL: IDLE (Dashboard) ═══ -->
         <div class="panel panel-idle" id="panelIdle">
+          <!-- Vertical icon rail. Collapsed it is a column of circles; hovering
+               anywhere on it slides every item open into a white pill. -->
+          <div class="dash-rail" id="dashRail">
+            <div class="rail-item" id="dashHomeBtn" title="Home">
+              <span class="rail-ico"><svg class="rail-grid" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></span>
+              <span class="rail-label">Home</span>
+            </div>
+            <div class="rail-item" id="dashOpenTrayBtn" title="File Tray">
+              <span class="rail-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></span>
+              <span class="rail-label">File Tray</span>
+            </div>
+            <div class="rail-item" id="dashOpenCamBtn" title="Camera">
+              <span class="rail-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></span>
+              <span class="rail-label">Camera</span>
+            </div>
+            <div class="rail-item" id="dashOpenTasksBtn" title="Tasks">
+              <span class="rail-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 5 9 9 5"></polyline><polyline points="3 17 5 19 9 15"></polyline><line x1="13" y1="7" x2="21" y2="7"></line><line x1="13" y1="17" x2="21" y2="17"></line></svg></span>
+              <span class="rail-label">Tasks</span>
+            </div>
+            <div class="rail-item" id="dashOpenTimerBtn" title="Timer">
+              <span class="rail-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><line x1="12" y1="9" x2="12" y2="13"></line><line x1="9" y1="2" x2="15" y2="2"></line></svg></span>
+              <span class="rail-label">Timer</span>
+            </div>
+          </div>
           <div class="dash">
             <div class="dash-header" style="display: flex; margin-bottom: 8px; align-items: center;">
               <!-- Left side matching Music Column width (310px) -->
               <div class="dash-header-left" style="flex: 0 0 260px; display: flex; align-items: center; padding-right: 8px;">
-                <div class="dash-icons" style="display: flex; gap: 14px; color: rgba(255,255,255,0.5);">
-                  <svg id="dashHomeBtn" style="cursor: pointer;" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/> <!-- Home -->
-                  </svg>
-                  <svg id="dashOpenTrayBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Open File Tray">
-                    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
-                    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path> <!-- Tray -->
-                  </svg>
-                  <svg id="dashOpenCamBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Open Camera">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                    <circle cx="12" cy="13" r="4"></circle> <!-- Camera -->
-                  </svg>
-                  <svg id="dashOpenTasksBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Tasks">
-                    <polyline points="3 7 5 9 9 5"></polyline>
-                    <polyline points="3 17 5 19 9 15"></polyline>
-                    <line x1="13" y1="7" x2="21" y2="7"></line>
-                    <line x1="13" y1="17" x2="21" y2="17"></line> <!-- Tasks -->
-                  </svg>
-                  <svg id="dashOpenTimerBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Timer">
-                    <circle cx="12" cy="13" r="8"></circle>
-                    <line x1="12" y1="9" x2="12" y2="13"></line>
-                    <line x1="9" y1="2" x2="15" y2="2"></line> <!-- Timer -->
-                  </svg>
-                </div>
-                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: 108px; letter-spacing: -0.01em; white-space: nowrap;" id="bigTime">1:47 PM</div>
+                <!-- Icons live in the vertical rail overlay (.dash-rail); the
+                     rail is cleared by .dash's left padding, so no spacer here. -->
+                <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: 210px; letter-spacing: -0.01em; white-space: nowrap;" id="bigTime">1:47 PM</div>
               </div>
               
               <!-- Right side matching Widgets Column -->
@@ -517,6 +519,18 @@
           <svg class="pill-batt-svg" viewBox="0 0 24 12">
             <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
             <rect id="chargingBattFill" x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#22c55e"/>
+            <path d="M11.6 3.1L8.9 6.7h1.8l-.7 2.5L13.4 5.5h-1.8z" fill="#0a0a0c"/>
+            <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+        </div>
+      </div>
+      <div class="panel panel-pill" id="panelUnplugged">
+        <div class="pill-l"><span class="pill-label">On Battery</span></div>
+        <div class="pill-r">
+          <span class="pill-val" id="unpluggedPct">100%</span>
+          <svg class="pill-batt-svg" viewBox="0 0 24 12">
+            <rect x="1" y="1" width="20" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
+            <rect id="unpluggedBattFill" x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#fff"/>
             <path d="M22 4v4a1 1 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
           </svg>
         </div>
@@ -667,6 +681,14 @@
             <span class="msg-exp-text">Hey man thanks for having me over for dinner. I had a great time. Maybe we can hang next week as well. We could go grab a bite and see the new scream movie if you want to? Let me know when your free. ✌😊</span>
           </div>
         </div>
+        <div class="msg-attach-chip" id="msgAttachChip">
+          <img id="msgAttachThumb" alt="" />
+          <span id="msgAttachName"></span>
+          <span class="msg-attach-x" id="msgAttachRemove">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </span>
+        </div>
+        <div class="msg-reply-status" id="msgReplyStatus"></div>
         <div class="msg-reply-bar">
           <button class="msg-reply-attach" id="msgReplyAttach">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>

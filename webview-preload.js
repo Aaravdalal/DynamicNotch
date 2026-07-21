@@ -26,92 +26,143 @@ window.addEventListener('message', (event) => {
   }
 });
 
-ipcRenderer.on('hidden-send-reply', (event, payload) => {
-  const data = typeof payload === 'string' ? { text: payload } : (payload || {});
-  const text = data.text || '';
-  const sender = (data.sender || '').trim().toLowerCase();
-  if (!text) return; // Attachment-only replies aren't wired up yet.
+// ─── Outgoing replies ───
+// This window is the one signed into Google Messages, so replies are typed
+// here. Every attempt reports back a real result; main must never have to
+// infer success from the page URL.
+const isMessages = () => window.location.hostname.includes('messages.google.com');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // Find a clickable "send" control across buttons and role=button elements.
-  const findSendBtn = () => {
-    const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
-    return candidates.find(el => {
-      const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
-      return label.includes('send') &&
-             !label.includes('schedule') &&
-             !label.includes('attach') &&
-             !label.includes('attachment') &&
-             !el.disabled;
+async function waitFor(finder, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const el = finder();
+    if (el) return el;
+    await sleep(120);
+  }
+  return null;
+}
+
+function findComposer() {
+  const selectors = isMessages()
+    ? ['mws-autosize-textarea textarea', 'textarea[aria-label*="message" i]', 'textarea',
+       '[contenteditable="true"][aria-label*="message" i]']
+    : ['div[contenteditable="true"][aria-label*="message" i]', 'div[contenteditable="true"]'];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
+function findSendButton() {
+  return Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
+    const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
+    return label.includes('send') && !label.includes('schedule') &&
+           !label.includes('attach') && !el.disabled &&
+           el.getAttribute('aria-disabled') !== 'true';
+  });
+}
+
+async function openConversation(sender) {
+  if (!sender) return;
+  const needle = sender.trim().toLowerCase();
+  if (!needle) return;
+
+  // Conversation list markup has changed across Google Messages releases,
+  // so try several selectors rather than one hard-coded tag.
+  const listSelectors = isMessages()
+    ? ['mws-conversation-list-item', '[data-testid="conversation-list-item"]', 'a[href^="/web/conversations/"]']
+    : ['[role="listitem"]', '[role="treeitem"]'];
+
+  let rows = [];
+  for (const sel of listSelectors) {
+    rows = Array.from(document.querySelectorAll(sel));
+    if (rows.length) break;
+  }
+
+  const match = rows.find(el => (el.textContent || '').toLowerCase().includes(needle));
+  if (!match) return; // Fall through and reply in whatever thread is open.
+  if (match.getAttribute('aria-selected') === 'true') return;
+
+  (match.querySelector('a, button, [role="button"]') || match).click();
+  await waitFor(findComposer, 4000);
+  await sleep(250);
+}
+
+async function attachFile(composer, attachment) {
+  const binary = atob(attachment.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const file = new File([bytes], attachment.name, { type: attachment.mime });
+
+  const dt = new DataTransfer();
+  dt.items.add(file);
+
+  // Prefer the page's own file input — same path its UI uses. Otherwise
+  // synthesise a paste, which Messages accepts for images.
+  const fileInput = document.querySelector('input[type="file"]');
+  if (fileInput) {
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  } else {
+    if (composer) composer.focus();
+    (composer || document.body).dispatchEvent(new ClipboardEvent('paste', {
+      clipboardData: dt, bubbles: true, cancelable: true
+    }));
+  }
+
+  await waitFor(findSendButton, 8000); // upload preview must render first
+  await sleep(400);
+}
+
+async function deliverReply(job) {
+  await openConversation(job.sender);
+
+  const composer = await waitFor(findComposer, 5000);
+  if (!composer) throw new Error('Could not find the message box');
+
+  if (job.attachment) await attachFile(composer, job.attachment);
+
+  if (job.text) {
+    composer.focus();
+    // execCommand routes through the browser's own editing path, so Angular
+    // registers the change and enables Send; assigning .value does not.
+    if (!document.execCommand('insertText', false, job.text)) {
+      composer.textContent = job.text;
+    }
+    composer.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(300);
+  }
+
+  const sendBtn = await waitFor(findSendButton, 4000);
+  if (sendBtn) {
+    sendBtn.click();
+  } else {
+    ['keydown', 'keypress', 'keyup'].forEach(type => {
+      composer.dispatchEvent(new KeyboardEvent(type, {
+        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+      }));
     });
-  };
+  }
 
-  const triggerSend = (inputEl) => {
-    // Give the framework time to register the inserted text and enable send.
-    setTimeout(() => {
-      const sendBtn = findSendBtn();
-      if (sendBtn) {
-        sendBtn.click();
-      } else if (inputEl) {
-        inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        inputEl.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-      }
-    }, 350);
-  };
+  // Confirm it left: the composer clears once Messages accepts the message.
+  await sleep(600);
+  const after = findComposer();
+  const leftover = ((after && (after.value || after.textContent)) || '').trim();
+  if (job.text && leftover === job.text.trim()) {
+    throw new Error('Message box did not clear — send was rejected');
+  }
+}
 
-  const insertAndSend = (input) => {
-    if (!input) {
-      console.warn('[DynamicNotch] No reply input field found on', window.location.hostname);
-      return;
-    }
-    input.focus();
-    document.execCommand('insertText', false, text);
-    // Let Angular/Polymer/React know the value changed so the send button enables.
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    triggerSend(input);
-  };
-
-  if (window.location.hostname.includes('messages.google.com')) {
-    // Conversation list markup has changed across Google Messages
-    // releases, so try several selectors rather than one hard-coded tag.
-    const convSelectors = [
-      'mws-conversation-list-item',
-      'mws-conversation-list-item-content',
-      '[data-testid="conversation-list-item"]',
-      'a[href^="/web/conversations/"]'
-    ];
-    let convs = [];
-    for (const sel of convSelectors) {
-      convs = Array.from(document.querySelectorAll(sel));
-      if (convs.length) break;
-    }
-
-    let target = convs[0]; // Fall back to the most recent conversation.
-    if (sender && convs.length > 1) {
-      const match = convs.find(el => (el.textContent || '').toLowerCase().includes(sender));
-      if (match) target = match;
-    }
-
-    if (target) {
-      const clickable = target.querySelector('a, button, [role="button"]') || target;
-      clickable.click();
-    }
-
-    setTimeout(() => {
-      const input = document.querySelector('textarea, mws-autosize-textarea textarea, mws-autosize-textarea, [contenteditable="true"][aria-label*="message" i]');
-      insertAndSend(input);
-    }, 400);
-  } else if (window.location.hostname.includes('chat.google.com')) {
-    // If we know who this is from, try to open their DM/space first.
-    if (sender) {
-      const rows = Array.from(document.querySelectorAll('[role="listitem"], [role="treeitem"]'));
-      const match = rows.find(el => (el.textContent || '').toLowerCase().includes(sender));
-      if (match) match.click();
-    }
-
-    setTimeout(() => {
-      const input = document.querySelector('div[contenteditable="true"][aria-label*="message" i], div[contenteditable="true"]');
-      insertAndSend(input);
-    }, sender ? 400 : 0);
+ipcRenderer.on('hidden-send-reply', async (event, payload) => {
+  const job = typeof payload === 'string' ? { text: payload } : (payload || {});
+  if (!job.text && !job.attachment) return;
+  try {
+    await deliverReply(job);
+    ipcRenderer.send('hidden-reply-result', { id: job.id, ok: true });
+  } catch (e) {
+    console.warn('[DynamicNotch] Reply failed:', e);
+    ipcRenderer.send('hidden-reply-result', { id: job.id, ok: false, error: e.message });
   }
 });

@@ -56,6 +56,42 @@ function killAllChildren() {
   childProcesses.length = 0;
 }
 
+// Outgoing replies destined for the browser extension, which types them into
+// the real signed-in Google Messages tab. The hidden Electron window shares no
+// login with the user's Chrome, so it can't send on their behalf.
+let replyOutbox = [];
+let outboxWaiters = [];
+const settledReplies = new Set(); // ids that already reported a final status
+
+function isWaiterAlive(waiter) {
+  const res = waiter && waiter.res;
+  return !!res && !res.writableEnded && !res.destroyed && res.socket && !res.socket.destroyed;
+}
+
+function queueReply(item) {
+  replyOutbox.push(item);
+
+  // Hand it straight to a waiting long-poll if the extension is listening.
+  // Writing to a half-dead socket does not throw, so a stale waiter would
+  // swallow the reply silently — skip past any that are no longer connected.
+  while (outboxWaiters.length > 0) {
+    const waiter = outboxWaiters.shift();
+    clearTimeout(waiter.timer);
+    if (!isWaiterAlive(waiter)) continue;
+
+    const items = replyOutbox.splice(0, replyOutbox.length);
+    try {
+      waiter.res.writeHead(200, { 'Content-Type': 'application/json' });
+      waiter.res.end(JSON.stringify({ items }));
+      console.log('[LocalAPI] Handed', items.length, 'reply job(s) to the extension');
+      return;
+    } catch (e) {
+      replyOutbox.unshift(...items); // extension vanished — keep for the next poll
+    }
+  }
+  console.log('[LocalAPI] No extension listening; reply is waiting in the outbox');
+}
+
 function safeSend(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -267,6 +303,7 @@ function createWindow() {
 
     // --- NEW: Local Notification API Server ---
     try {
+      // Replies wait here for the browser extension to collect them.
       const http = require('http');
       const server = http.createServer((req, res) => {
         // Set CORS headers
@@ -317,6 +354,41 @@ function createWindow() {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Invalid JSON' }));
             }
+          });
+        } else if (req.method === 'GET' && req.url === '/outbox') {
+          // Long-poll: the extension holds this open until a reply is queued,
+          // so replies reach the real signed-in tab instantly without polling.
+          if (replyOutbox.length > 0) {
+            const items = replyOutbox.splice(0, replyOutbox.length);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ items }));
+          } else {
+            const waiter = { res, timer: null };
+            waiter.timer = setTimeout(() => {
+              outboxWaiters = outboxWaiters.filter(w => w !== waiter);
+              try {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ items: [] }));
+              } catch (e) {}
+            }, 25000);
+            outboxWaiters.push(waiter);
+            req.on('close', () => {
+              clearTimeout(waiter.timer);
+              outboxWaiters = outboxWaiters.filter(w => w !== waiter);
+            });
+          }
+        } else if (req.method === 'POST' && req.url === '/reply-status') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const payload = JSON.parse(body);
+              console.log('[LocalAPI] Reply status:', payload.id, payload.ok ? 'sent' : 'FAILED ' + (payload.error || ''));
+              if (payload.id) settledReplies.add(payload.id);
+              safeSend('reply-status', payload);
+            } catch (e) {}
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
           });
         } else {
           res.writeHead(404);
@@ -928,24 +1000,94 @@ async function resetMessagesSession() {
   showMessagesLogin();
 }
 
+// The hidden window reporting how a reply actually went.
+ipcMain.on('hidden-reply-result', (event, result) => {
+  const data = result || {};
+  if (!data.id || settledReplies.has(data.id)) return;
+  settledReplies.add(data.id);
+  console.log('[Reply]', data.id, data.ok ? 'sent' : 'FAILED: ' + (data.error || ''));
+  safeSend('reply-status', data);
+});
+
+const ATTACHMENT_MIME = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+  '.heic': 'image/heic', '.mp4': 'video/mp4', '.mov': 'video/quicktime'
+};
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+// Read a picked file into the base64 form the extension can rebuild as a File.
+// The content script has no filesystem access, so the bytes travel with the job.
+function buildAttachment(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_ATTACHMENT_BYTES) {
+      return { error: 'Attachment is larger than 20MB' };
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    return {
+      name: path.basename(filePath),
+      mime: ATTACHMENT_MIME[ext] || 'application/octet-stream',
+      data: fs.readFileSync(filePath).toString('base64')
+    };
+  } catch (e) {
+    return { error: 'Could not read ' + path.basename(filePath) };
+  }
+}
+
 ipcMain.on('send-reply', (event, payload) => {
   const data = typeof payload === 'string' ? { text: payload } : (payload || {});
-  console.log('[HiddenMessage] Sending reply:', data);
+  const job = {
+    id: 'r' + Date.now() + Math.random().toString(36).slice(2, 6),
+    text: data.text || '',
+    sender: data.sender || '',
+    app: data.app || 'google-messages'
+  };
 
-  const notSignedIn = hiddenMessages && !hiddenMessages.isDestroyed() &&
-    hiddenMessages.webContents.getURL().includes('/authentication');
-  if (notSignedIn) {
-    console.log('[HiddenMessage] Not signed into Google Messages yet — opening login.');
-    showMessagesLogin();
+  if (data.attachment) {
+    const built = buildAttachment(data.attachment);
+    if (built.error) {
+      console.error('[Reply] Attachment failed:', built.error);
+      safeSend('reply-status', { id: job.id, ok: false, error: built.error });
+      return;
+    }
+    job.attachment = built;
+  }
+
+  if (!job.text && !job.attachment) return;
+
+  // The hidden window is the one holding the Google session — the same one
+  // that intercepts incoming messages — so it sends. It reports a real result;
+  // the old code guessed from the URL, saw "/authentication" on a perfectly
+  // signed-in window, and silently bailed to the login prompt instead.
+  const target = job.app === 'gchat' ? hiddenGchat : hiddenMessages;
+  if (target && !target.isDestroyed()) {
+    console.log('[Reply] Sending via hidden window:', job.id, job.text ? `"${job.text}"` : '(attachment)');
+    target.webContents.send('hidden-send-reply', job);
+
+    setTimeout(() => {
+      if (settledReplies.has(job.id)) return;
+      console.log('[Reply] Hidden window did not confirm', job.id, '— trying the extension');
+      queueReply(job);
+      setTimeout(() => {
+        if (settledReplies.has(job.id)) return;
+        settledReplies.add(job.id);
+        replyOutbox = replyOutbox.filter(item => item.id !== job.id);
+        safeSend('reply-status', { id: job.id, ok: false, error: 'Google Messages did not respond' });
+      }, 12000);
+    }, 15000);
     return;
   }
 
-  if (hiddenMessages && !hiddenMessages.isDestroyed()) {
-    hiddenMessages.webContents.send('hidden-send-reply', data);
-  }
-  if (hiddenGchat && !hiddenGchat.isDestroyed()) {
-    hiddenGchat.webContents.send('hidden-send-reply', data);
-  }
+  // No hidden window at all — fall back to the browser extension.
+  console.log('[Reply] No hidden window; queueing for extension:', job.id);
+  queueReply(job);
+  setTimeout(() => {
+    if (settledReplies.has(job.id)) return;
+    settledReplies.add(job.id);
+    replyOutbox = replyOutbox.filter(item => item.id !== job.id);
+    safeSend('reply-status', { id: job.id, ok: false, error: 'Google Messages is not connected' });
+  }, 12000);
 });
 
 // =============================================

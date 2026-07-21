@@ -93,7 +93,9 @@ html, body {
 .notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="file-tray"]{width:560px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="charging"],
+.notch.expanded[data-state="unplugged"],
 .notch.expanded[data-state="low-battery"]{width:320px;height:52px;border-radius:0 0 22px 22px}
+.pill-icon{flex:0 0 auto}
 .notch.expanded[data-state="recording"]{width:260px;height:52px;border-radius:0 0 22px 22px}
 .notch.expanded[data-state="timer"]{width:210px;height:52px;border-radius:0 0 22px 22px}
 /* "Time's up" needs more room than a countdown: widen and drop the "Timer"
@@ -259,6 +261,7 @@ html, body {
 .notch.expanded[data-state="bt-music"] .panel-btmusic,
 .notch.expanded[data-state="unlock"] .panel-unlock,
 .notch.expanded[data-state="charging"] #panelCharging,
+.notch.expanded[data-state="unplugged"] #panelUnplugged,
 .notch.expanded[data-state="dnd"] #panelDnd,
 .notch.expanded[data-state="file-tray"] #panelFileTray,
 .notch.expanded[data-state="low-battery"] #panelLowBattery{display:flex;opacity:1}
@@ -269,10 +272,15 @@ html, body {
 }
 .pill-l,.pill-r{display:flex;align-items:center;gap:10px}
 .pill-label{color:#fff;font-size:13px;font-weight:600}
-.pill-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+/* Needs an explicit colour: without one it inherits black and vanishes against
+   the notch — only the .green/.red variants were ever visible. */
+.pill-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#fff;line-height:1}
 .pill-val.green{color:var(--green)}
 .pill-val.red{color:var(--red)}
-.pill-batt-svg{width:24px;height:12px}
+.pill-batt-svg{width:24px;height:12px;display:block;flex:0 0 auto}
+
+/* Battery pills read as one centred unit rather than pinned to both edges. */
+#panelCharging,#panelUnplugged{justify-content:center;gap:10px}
 .pill-icon{flex-shrink:0}
 
 /* DND */
@@ -295,6 +303,43 @@ html, body {
 .notch[data-state="unlock"].success .faceid-lottie{display:block}
 /* Grow the notch when the big checkmark plays so it isn't clipped. */
 .notch.expanded[data-state="unlock"].success{width:230px;height:230px}
+
+/* ─── DASHBOARD ICON RAIL ─── */
+.dash-rail{
+  position:absolute;left:10px;top:10px;z-index:6;
+  display:flex;flex-direction:column;gap:5px;align-items:flex-start
+}
+/* The rail precedes .dash in the markup, so hovering it can slide the
+   dashboard — calendar and Quick Start included — clear of the open pill.
+   The shift rides the same spring as the pill so they move as one gesture.
+   (The transition itself lives on the .dash rule further down — that rule also
+   sets `transition`, and would otherwise overwrite it.) */
+.dash-rail:hover ~ .dash{padding-left:112px}
+.rail-item{
+  display:flex;align-items:center;height:30px;width:30px;flex:0 0 auto;
+  border-radius:15px;overflow:hidden;cursor:pointer;
+  background:#fff;color:#0a0a0c;
+  box-shadow:0 1px 4px rgba(0,0,0,0.3);
+  /* One curve for the slide, a quicker one for the lift, so an item that is
+     collapsing and one that is opening stay in step. */
+  transition:width .32s var(--spring), box-shadow .22s var(--ease)
+}
+.rail-ico{
+  width:30px;height:30px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center
+}
+.rail-label{
+  white-space:nowrap;font-size:12.5px;font-weight:600;letter-spacing:-0.01em;
+  color:#0a0a0c;opacity:0;transform:translateX(-6px);padding-right:11px;
+  transition:opacity .14s var(--ease), transform .28s var(--spring)
+}
+/* Only the item under the cursor opens; moving to the next one collapses the
+   previous through the same curve, so the two motions read as one handoff. */
+.rail-item:hover{width:95px;box-shadow:0 3px 12px rgba(0,0,0,0.45)}
+/* Home reads as an outline at rest and fills in under the cursor. */
+.rail-grid rect{transition:fill .22s var(--ease)}
+.rail-item:hover .rail-grid rect{fill:currentColor}
+.rail-item:hover .rail-label{opacity:1;transform:none;transition-delay:.07s}
 
 /* ─── CAMERA ─── */
 .notch.expanded[data-state="camera"]{width:452px;height:312px;border-radius:0 0 28px 28px}
@@ -587,8 +632,10 @@ html, body {
 
 /* ═══ DASHBOARD (idle) ═══ */
 .panel-idle{background:var(--bg)}
-.dash{padding:16px 6px 16px 16px;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;color:#fff;
-  opacity:0;transition:opacity .5s ease .1s;
+/* Resting padding clears the collapsed rail; the extra room for an open pill
+   is added only on hover — see the .dash-rail:hover rule. */
+.dash{padding:16px 6px 16px 48px;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;color:#fff;
+  opacity:0;transition:opacity .5s ease .1s, padding-left .34s var(--spring);
 }
 .notch.expanded .panel-idle .dash{opacity:1}
 .hidden{display:none !important}
@@ -1422,6 +1469,33 @@ html, body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Staged attachment, shown above the reply bar until it is sent or removed. */
+.msg-attach-chip{
+  display:none;align-items:center;gap:8px;align-self:flex-start;
+  max-width:100%;margin-bottom:6px;padding:4px 8px 4px 4px;
+  background:rgba(255,255,255,0.1);border-radius:10px
+}
+.msg-attach-chip.visible{display:flex}
+.msg-attach-chip img{
+  width:28px;height:28px;border-radius:6px;object-fit:cover;flex:0 0 auto;background:rgba(0,0,0,0.3)
+}
+.msg-attach-chip span{
+  font-size:12px;font-weight:500;color:rgba(255,255,255,0.8);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px
+}
+.msg-attach-x{
+  flex:0 0 auto;width:16px;height:16px;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.75)
+}
+.msg-attach-x:hover{background:rgba(255,255,255,0.3);color:#fff}
+.msg-reply-status{
+  align-self:flex-start;min-height:0;margin-bottom:4px;
+  font-size:11px;font-weight:600;color:rgba(255,255,255,0.5)
+}
+.msg-reply-status.ok{color:var(--green)}
+.msg-reply-status.err{color:var(--red);max-width:100%;white-space:normal;line-height:1.3}
+
 .msg-reply-bar {
   margin-top: auto;
   width: 100%;
