@@ -206,14 +206,33 @@ function createWindow() {
     // the Hello facial-recognition setup window appears.
     const helloMonitorProc = spawnTracked('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'hello-monitor.ps1')], { windowsHide: true });
     let helloBuffer = '';
+    let faceZOrderInterval = null;
     helloMonitorProc.stdout.on('data', (data) => {
       helloBuffer += data.toString();
       const lines = helloBuffer.split(/\r?\n/);
       helloBuffer = lines.pop();
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed === 'FACE:START') safeSend('faceid-scan', 'START');
-        else if (trimmed === 'FACE:STOP') safeSend('faceid-scan', 'STOP');
+        if (trimmed === 'FACE:START') {
+          safeSend('faceid-scan', 'START');
+          // The Windows Hello dialog is a freshly-focused window that keeps
+          // re-claiming the topmost z-order, so a one-off setAlwaysOnTop isn't
+          // enough — moveTop() has to be nudged repeatedly for as long as the
+          // dialog is up, or the notch renders but stays hidden behind it.
+          clearInterval(faceZOrderInterval);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            try { mainWindow.setAlwaysOnTop(true, 'screen-saver'); mainWindow.moveTop(); } catch (e) {}
+          }
+          faceZOrderInterval = setInterval(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              try { mainWindow.moveTop(); } catch (e) {}
+            }
+          }, 250);
+        } else if (trimmed === 'FACE:STOP') {
+          safeSend('faceid-scan', 'STOP');
+          clearInterval(faceZOrderInterval);
+          faceZOrderInterval = null;
+        }
       }
     });
 
@@ -1004,24 +1023,65 @@ app.whenReady().then(() => {
       try {
         const q = await yf.quote(t.symbol);
         const prevClose = q.regularMarketPreviousClose ?? q.chartPreviousClose ?? null;
+
         let spark = [];
+        let intraday = false;
         try {
-          // Today's intraday shape: 5-minute closes since midnight.
-          const start = new Date(); start.setHours(0, 0, 0, 0);
-          const ch = await yf.chart(t.symbol, { period1: start, interval: '5m' });
-          spark = (ch.quotes || []).map(p => p.close).filter(v => v != null);
+          // Pull a few days of 5-minute bars, then keep only the most recent
+          // REGULAR session. Asking for "since local midnight" broke on
+          // weekends, holidays and non-US timezones; this always lands on the
+          // real last trading day, matching Google Finance's 1D view.
+          const ch = await yf.chart(t.symbol, {
+            period1: new Date(Date.now() - 5 * 24 * 3600 * 1000),
+            interval: '5m',
+          });
+
+          // Session bounds come from the exchange's own metadata rather than
+          // hardcoded NYSE hours, so watchlist symbols on other exchanges get
+          // their correct open/close window.
+          const tz = (ch.meta && ch.meta.exchangeTimezoneName) || 'America/New_York';
+          const dayIn = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: tz });
+          const minIn = (d) => {
+            const s = new Date(d).toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
+            const [h, m] = s.split(':').map(Number);
+            return h * 60 + m;
+          };
+          const reg = ch.meta && ch.meta.currentTradingPeriod && ch.meta.currentTradingPeriod.regular;
+          let openMin = 9 * 60 + 30, closeMin = 16 * 60; // sane default
+          if (reg && reg.start && reg.end) {
+            openMin = minIn(reg.start);
+            closeMin = minIn(reg.end);
+          }
+
+          const bars = (ch.quotes || []).filter(p => p && p.date && p.close != null);
+          // Drop pre/post-market bars — they stretch the x-axis past the close
+          // and make the shape disagree with Google Finance's session chart.
+          const regBars = bars.filter(p => {
+            const m = minIn(p.date);
+            return m >= openMin && m <= closeMin;
+          });
+          if (regBars.length) {
+            const lastDay = dayIn(regBars[regBars.length - 1].date);
+            // Keep timestamps: the renderer plots x by real time, so a lull with
+            // no trades stays a gap instead of being squeezed out (which is what
+            // made the shape disagree with Google Finance).
+            spark = regBars
+              .filter(p => dayIn(p.date) === lastDay)
+              .map(p => ({ t: new Date(p.date).getTime(), c: p.close }));
+            intraday = spark.length >= 2;
+          }
         } catch (e) {}
-        // Anchor the line at yesterday's close so its direction (and the color
-        // we pick from changePct) always agree with the day's actual movement.
-        if (prevClose != null) spark = [prevClose, ...spark];
-        // Weekend / holiday / pre-market: fall back to a short daily history.
+
+        // Weekend / holiday / thin symbol: fall back to a daily history.
         if (spark.length < 2) {
           try {
             const ch2 = await yf.chart(t.symbol, {
-              period1: new Date(Date.now() - 7 * 24 * 3600 * 1000),
+              period1: new Date(Date.now() - 30 * 24 * 3600 * 1000),
               interval: '1d',
             });
-            spark = (ch2.quotes || []).map(p => p.close).filter(v => v != null);
+            spark = (ch2.quotes || [])
+              .filter(p => p && p.date && p.close != null)
+              .map(p => ({ t: new Date(p.date).getTime(), c: p.close }));
           } catch (e) {}
         }
         return {
@@ -1030,10 +1090,12 @@ app.whenReady().then(() => {
           price: q.regularMarketPrice ?? null,
           change: q.regularMarketChange ?? null,
           changePct: q.regularMarketChangePercent ?? null,
+          prevClose,
+          intraday,
           spark,
         };
       } catch (e) {
-        return { symbol: t.symbol, label: t.label || t.symbol, price: null, change: null, changePct: null, spark: [] };
+        return { symbol: t.symbol, label: t.label || t.symbol, price: null, change: null, changePct: null, prevClose: null, intraday: false, spark: [] };
       }
     }));
     return results;

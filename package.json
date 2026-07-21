@@ -10,6 +10,7 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "@tabler/icons": "^3.40.0",
+    "lottie-web": "^5.13.0",
     "node-fetch": "^2.7.0",
     "node-ical": "^0.26.1",
     "systeminformation": "^5.31.3",

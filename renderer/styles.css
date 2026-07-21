@@ -133,6 +133,9 @@ html, body {
 .notch[data-state="bt-music"] .c-song,
 .notch[data-state="bt-music"] .c-album-img{display:block !important}
 
+.c-dl-name{font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;display:none;letter-spacing:-0.01em}
+.notch[data-state="download"] .c-dl-name{display:block !important}
+
 /* Animation on the containers for smoother reveal */
 .notch[data-state="music"] .c-left,
 .notch[data-state="music"] .c-right,
@@ -270,11 +273,69 @@ html, body {
 
 /* ─── UNLOCK ─── */
 .panel-unlock{align-items:center;justify-content:center}
-.faceid-box{width:80px;height:80px;display:flex;align-items:center;justify-content:center}
+.faceid-box{width:80px;height:80px;display:flex;align-items:center;justify-content:center;position:relative}
 .faceid-svg{width:100%;height:100%}
-.notch[data-state="unlock"].success .faceid-face{display:none}
-.notch[data-state="unlock"].success .faceid-check{animation:chk .6s ease forwards}
-@keyframes chk{0%{opacity:1;stroke-dashoffset:100}100%{opacity:1;stroke-dashoffset:0}}
+/* Success checkmark (lottie) is intentionally much larger than the scan icon. */
+.faceid-lottie{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;display:none;pointer-events:none}
+.notch[data-state="unlock"].success .faceid-svg{display:none}
+.notch[data-state="unlock"].success .faceid-lottie{display:block}
+/* Grow the notch when the big checkmark plays so it isn't clipped. */
+.notch.expanded[data-state="unlock"].success{width:230px;height:230px}
+
+/* ─── CAMERA ─── */
+.notch.expanded[data-state="camera"]{width:452px;height:312px;border-radius:0 0 28px 28px}
+.notch.expanded[data-state="camera"] #panelCamera{display:flex;opacity:1}
+/* Bezel: the black padding around the inset, rounded video feed frames the
+   image so it reads like a device screen rather than filling the notch. */
+.panel-camera{
+  align-items:center;justify-content:center;overflow:hidden;position:relative;
+  background:#000;padding:14px;box-sizing:border-box;
+}
+/* The frame clips the video (including when zoomed) to the rounded inset, so
+   the black bezel padding is ALWAYS preserved no matter the zoom level.
+   Bottom radius is concentric with the notch: outer 28px − 14px bezel = 14px,
+   so the inner curve nests perfectly inside the notch's bottom corners. */
+.cam-frame{
+  position:relative;width:100%;height:100%;border-radius:10px 10px 14px 14px;
+  overflow:hidden;
+  background:#111;box-shadow:0 0 0 1px rgba(255,255,255,0.06), 0 6px 18px rgba(0,0,0,0.5);
+}
+#camVideo{
+  width:100%;height:100%;object-fit:cover;
+  transform:scaleX(-1); /* mirror like a selfie / Photo Booth */
+  transform-origin:center center;
+  /* Hidden until the stream is actually playing so no pre-stream flash/garbage
+     shows during load — the black bezel is all that's visible while loading. */
+  opacity:0;transition:opacity .3s ease, transform .09s ease-out;
+}
+.panel-camera.cam-ready #camVideo{opacity:1}
+/* Soft loading shimmer inside the frame while the stream spins up. */
+.cam-loading{
+  position:absolute;inset:0;background:#111;
+  display:flex;align-items:center;justify-content:center;
+}
+.panel-camera.cam-ready .cam-loading,
+.panel-camera.cam-failed .cam-loading{display:none}
+.cam-spinner{
+  width:26px;height:26px;border-radius:50%;
+  border:3px solid rgba(255,255,255,0.15);border-top-color:rgba(255,255,255,0.7);
+  animation:cam-spin .8s linear infinite;
+}
+@keyframes cam-spin{to{transform:rotate(360deg)}}
+.cam-error{
+  position:absolute;inset:14px;display:none;align-items:center;justify-content:center;
+  color:rgba(255,255,255,0.75);font-size:13px;font-weight:600;text-align:center;padding:0 24px;
+  border-radius:10px 10px 14px 14px;background:#111;z-index:1;
+}
+.panel-camera.cam-failed .cam-error{display:flex}
+.panel-camera.cam-failed #camVideo{display:none}
+.cam-close{
+  position:absolute;top:22px;right:22px;width:28px;height:28px;border-radius:50%;
+  background:rgba(0,0,0,0.55);color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;transition:opacity .2s ease;z-index:2;
+}
+.panel-camera:hover .cam-close{opacity:1}
+.cam-close:hover{background:rgba(0,0,0,0.8)}
 
 /* ─── HOVER TOGGLES ─── */
 .panel-hover{align-items:center;justify-content:center}
@@ -295,27 +356,45 @@ html, body {
 .ht-icon.cam-on{color:var(--green)}
 .ht-icon.cam-off{color:var(--red)}
 
-/* ─── SLIDER (VOL/BRIGHT) ─── */
-.notch.expanded[data-state="slider"]{width:220px;height:58px;border-radius:0 0 24px 24px}
+/* ─── SLIDER (VOL/BRIGHT) — single rounded bar + value ─── */
+/* This is a transient HUD, so it overrides the notch's default .45s spring and
+   the panel's delayed .35s fade — those made every volume/brightness press take
+   ~500ms to fully appear. A short ease-out reads as instant but still fluid. */
+.notch.expanded[data-state="slider"]{
+  width:300px;height:52px;border-radius:0 0 22px 22px;
+  transition:width .2s var(--ease), height .2s var(--ease), border-radius .2s var(--ease);
+}
 .notch.expanded[data-state="slider"] #panelSlider{display:flex;opacity:1}
+#panelSlider{transition:opacity .12s var(--ease)}
 .panel-slider{
-  align-items:center;justify-content:flex-start;padding:0 16px;gap:12px;
+  align-items:center;justify-content:flex-start;padding:0 18px;gap:13px;
 }
 .slider-icon{
-  color:#fff;display:flex;align-items:center;justify-content:center;
-}
-.slider-col{
-  display:flex;flex-direction:column;flex:1;
-}
-.slider-pct{
-  color:#fff;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;margin-bottom:4px;line-height:1;
+  color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
 .slider-bar-container{
-  display:flex;align-items:center;width:100%;
+  flex:1;display:flex;align-items:center;cursor:pointer;height:20px;
 }
-.slider-dashes{
-  display:flex;gap:2px;align-items:center;width:100%;
+.slider-track{
+  position:relative;width:100%;height:7px;background:rgba(255,255,255,0.22);
+  border-radius:99px;overflow:hidden;
 }
+/* GPU-composited fill: full-width element scaled from the left. The track's
+   overflow:hidden + border-radius gives the rounded ends, so scaleX never
+   distorts the corners. transition is short + eased for fluid, responsive
+   motion under rapid volume/brightness changes. */
+.slider-fill{
+  position:absolute;left:0;top:0;height:100%;width:100%;background:#fff;
+  transform:scaleX(0);transform-origin:left center;
+  transition:transform .1s cubic-bezier(0.33, 1, 0.68, 1);
+  will-change:transform;
+}
+.slider-num{
+  color:#fff;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;
+  flex-shrink:0;min-width:24px;text-align:right;line-height:1;
+}
+/* legacy dash styles (unused, kept harmless) */
+.slider-dashes{display:none}
 .slider-dash{
   flex:1;height:10px;background:rgba(255,255,255,0.2);border-radius:1px;
 }
@@ -323,48 +402,25 @@ html, body {
   background:#fff;
 }
 
-/* ─── DOWNLOAD PANEL ─── */
-.notch.expanded[data-state="download"]{width:260px;height:64px;border-radius:0 0 24px 24px}
-.notch.expanded[data-state="download"] #panelDownload{display:flex;opacity:1}
-.panel-download{
-  align-items:center;justify-content:flex-start;padding:0 16px;gap:12px;
-}
-.dl-left{
-  display:flex;align-items:center;justify-content:center;
-  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);
-  color:#fff;
-}
-.dl-icon {
-  display:flex;align-items:center;justify-content:center;
-  position:relative;
-}
-.dl-col{
-  display:flex;flex-direction:column;flex:1;overflow:hidden;
-}
-.dl-title{
-  color:#fff;font-size:14px;font-weight:700;margin-bottom:2px;
-}
-.dl-filename{
-  color:rgba(255,255,255,0.6);font-size:12px;font-weight:500;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+/* ─── DOWNLOAD (compact, collapsed-pill only — never expands the notch) ─── */
+.c-dl{display:none;position:relative;width:22px;height:22px;flex-shrink:0;align-items:center;justify-content:center}
+.c-dl-ring{width:100%;height:100%}
+.dl-ring-fill{stroke:#0a84ff;transition:stroke-dashoffset .3s ease;transform-box:fill-box;transform-origin:center;transform:rotate(-90deg)}
+/* No known total (external browser download) → clean spinning arc. */
+.dl-ring-fill.indeterminate{stroke-dasharray:35 60 !important;animation:dl-ring-spin .9s linear infinite}
+@keyframes dl-ring-spin{to{transform:rotate(360deg)}}
+.c-dl-check{position:absolute;inset:0;margin:auto}
+.notch[data-state="download"] .c-dl{display:flex}
+/* During a download the pill shows only the file name + this indicator. */
+.notch[data-state="download"] .c-time-wrap,
+.notch[data-state="download"] #cBattery,
+.notch[data-state="download"] .c-eq{display:none !important}
 
-/* Download Animations */
-@keyframes dl-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
+.dl-check-anim{
+  stroke-dasharray:24;stroke-dashoffset:24;
+  animation:dl-draw-check .35s ease-out forwards;
 }
-.dl-anim-bounce {
-  animation: dl-bounce 1s infinite ease-in-out;
-}
-.dl-check-anim {
-  stroke-dasharray: 50;
-  stroke-dashoffset: 50;
-  animation: dl-draw-check 0.4s ease-out forwards;
-}
-@keyframes dl-draw-check {
-  to { stroke-dashoffset: 0; }
-}
+@keyframes dl-draw-check{to{stroke-dashoffset:0}}
 
 /* ═══ DASHBOARD (idle) ═══ */
 .panel-idle{background:var(--bg)}
@@ -909,7 +965,7 @@ html, body {
 }
 .stocks-header{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1a1a1a;flex-shrink:0;}
 .stocks-header .stocks-chevron{color:rgba(0,0,0,0.4);margin-left:1px;}
-/* Body holds the scrolling cards (+ the watchlist search on the right) */
+/* Body holds the scrolling cards (search lives up in the header) */
 .stocks-body{display:flex;flex:1;min-height:0;gap:8px;align-items:stretch;}
 /* Show 3 cards at a time; any extras scroll horizontally. Small top pad leaves
    room for the watchlist remove-× without pushing the cards down. */
@@ -928,7 +984,11 @@ html, body {
 .stock-change.up{color:#16a34a;}
 .stock-change.down{color:#dc2626;}
 .stock-price{flex-shrink:0;font-size:14px;font-weight:800;color:#111;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.stock-spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px;pointer-events:none;opacity:0.95;}
+.stock-prev{flex-shrink:0;font-size:9px;font-weight:600;color:rgba(0,0,0,0.45);line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.stock-spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px;pointer-events:none;opacity:0.95;z-index:0;}
+/* An absolutely-positioned SVG paints above in-flow content no matter the DOM
+   order, so the text needs its own stacking to sit ON TOP of the line. */
+.stock-top,.stock-price,.stock-prev{position:relative;z-index:1;}
 
 /* ═══ WIDGET PICKER ═══ */
 .widget-picker{
@@ -968,10 +1028,11 @@ html, body {
 .sm-check{color:#0a84ff;font-weight:800;opacity:0;}
 .sm-item.selected .sm-check{opacity:1;}
 
-/* ═══ STOCKS: watchlist search (small grey pill, docked right) ═══ */
+/* ═══ STOCKS: watchlist search (small grey pill, sits beside the title) ═══ */
 .watchlist-add{
   display:flex;align-items:center;gap:4px;flex-shrink:0;box-sizing:border-box;
-  align-self:center;width:92px;height:22px;padding:0 8px;border-radius:99px;
+  align-self:center;width:124px;height:20px;padding:0 8px;border-radius:99px;
+  margin-left:10px;
   background:#eceded;border:1px solid rgba(0,0,0,0.06);
 }
 .watchlist-add:focus-within{background:#e4e6e7;border-color:rgba(0,0,0,0.12);}

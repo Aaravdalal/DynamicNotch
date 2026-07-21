@@ -32,6 +32,7 @@
           <span class="c-date" id="cDate"></span>
           <span class="c-song" id="cSongTitle"></span>
           <span class="c-bt-name" id="cBtLabel"></span>
+          <span class="c-dl-name" id="cDlName"></span>
         </div>
         <div class="c-right">
           <div class="c-eq" id="cEq"><span></span><span></span><span></span><span></span></div>
@@ -49,6 +50,16 @@
           <div class="c-rec" id="cRec">
             <div class="rec-dot"></div>
             <span id="cRecTime">0:00</span>
+          </div>
+          <!-- Download progress (compact, never expands the notch) -->
+          <div class="c-dl" id="cDl">
+            <svg class="c-dl-ring" id="cDlRingSvg" viewBox="0 0 36 36">
+              <circle class="ring-bg" cx="18" cy="18" r="15" />
+              <circle class="ring-fill dl-ring-fill" id="cDlRingFill" cx="18" cy="18" r="15" />
+            </svg>
+            <svg class="c-dl-check" id="cDlCheck" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
           </div>
           <!-- Timer Collapsed -->
           <div class="c-timer" id="cTimer" style="display: none; align-items: center; gap: 6px; color: #f97316;">
@@ -82,6 +93,10 @@
                   <svg id="dashOpenTrayBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Open File Tray">
                     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
                     <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path> <!-- Tray -->
+                  </svg>
+                  <svg id="dashOpenCamBtn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;" title="Open Camera">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle> <!-- Camera -->
                   </svg>
                 </div>
                 <div style="font-size: 15px; font-weight: 700; color: #fff; margin-left: 180px; letter-spacing: -0.01em; white-space: nowrap;" id="bigTime">1:47 PM</div>
@@ -251,6 +266,11 @@
                     <span id="stocksTitle">Markets</span>
                     <svg class="stocks-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                   </button>
+                  <!-- Watchlist search (shown only in watchlist mode, beside the title) -->
+                  <div class="watchlist-add" id="watchlistAdd" style="display:none;">
+                    <svg class="wl-search-ic" id="watchlistAddBtn" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="watchlistInput" placeholder="Add" maxlength="8" autocomplete="off" spellcheck="false" />
+                  </div>
                   <!-- Market vs Watchlist dropdown -->
                   <div class="stocks-mode-menu" id="stocksModeMenu" style="display:none;">
                     <div class="sm-item" data-mode="market"><span class="sm-name">Market</span><span class="sm-check">✓</span></div>
@@ -260,11 +280,6 @@
                 <div class="stocks-body">
                   <div class="stocks-row" id="stocksRow">
                     <div class="stocks-loading">Loading markets…</div>
-                  </div>
-                  <!-- Watchlist search (shown only in watchlist mode, to the right) -->
-                  <div class="watchlist-add" id="watchlistAdd" style="display:none;">
-                    <svg class="wl-search-ic" id="watchlistAddBtn" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="watchlistInput" placeholder="Add" maxlength="8" autocomplete="off" spellcheck="false" />
                   </div>
                 </div>
               </div>
@@ -314,30 +329,25 @@
       <!-- ═══ PANEL: SLIDER (VOL/BRIGHT) ═══ -->
       <div class="panel panel-slider" id="panelSlider">
         <div class="slider-icon" id="sliderIcon"></div>
-        <div class="slider-col">
-          <div class="slider-pct" id="sliderPct">81%</div>
-          <div class="slider-bar-container">
-            <div class="slider-dashes" id="sliderDashes"></div>
+        <div class="slider-bar-container">
+          <div class="slider-track">
+            <div class="slider-fill" id="sliderFill"></div>
           </div>
         </div>
+        <div class="slider-num" id="sliderPct">1</div>
       </div>
 
-      <!-- ═══ PANEL: DOWNLOAD ═══ -->
-      <div class="panel panel-download" id="panelDownload">
-        <div class="dl-left">
-          <div class="dl-icon" id="dlIcon">
-            <!-- Default animated download arrow -->
-            <svg id="dlArrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            <!-- Checkmark for completion -->
-            <svg id="dlCheck" style="display:none;" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          </div>
+      <!-- ═══ PANEL: CAMERA ═══ -->
+      <div class="panel panel-camera" id="panelCamera">
+        <div class="cam-frame">
+          <div class="cam-loading" id="camLoading"><div class="cam-spinner"></div></div>
+          <video id="camVideo" autoplay muted playsinline></video>
         </div>
-        <div class="dl-col">
-          <div class="dl-title" id="dlTitle">Downloading...</div>
-          <div class="dl-filename" id="dlFilename">file.zip</div>
+        <div class="cam-error" id="camError"></div>
+        <div class="cam-close" id="camCloseBtn" title="Close camera">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </div>
       </div>
-
 
       <!-- ═══ PANEL: HOVER TICKLES ═══ -->
       <div class="panel panel-hover" id="panelHoverToggles">
@@ -430,6 +440,7 @@
             </g>
             <path class="faceid-check" d="M30 52 L45 65 L70 35" stroke="#22c55e" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" style="opacity:0;stroke-dasharray:100;stroke-dashoffset:100;"/>
           </svg>
+          <div class="faceid-lottie" id="faceidLottie"></div>
           </div>
         </div>
 

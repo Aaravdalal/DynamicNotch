@@ -200,28 +200,32 @@ namespace SysMonitor
             int lastBright = GetBrightness();
             int lastDnd = GetDndState();
 
+            // Brightness manual-vs-auto discrimination by change pattern:
+            // a brightness KEY press is a single instant step (brightness moves
+            // once, then holds), while AUTO/adaptive brightness RAMPS smoothly
+            // through many intermediate values over ~1-2s. We poll brightness
+            // fast, count how many consecutive samples it kept changing
+            // (the "streak"), and once it settles we only show the notch if the
+            // streak was short (a discrete key step) — long ramps are auto and
+            // are suppressed. No window/OSD or input-activity guessing needed.
+            int brightStreak = 0;   // consecutive changing samples
+            int brightStable = 0;   // samples since it stopped changing
+            bool brightPending = false; // a change is awaiting a settle decision
+
+            // Poll fast (60ms) so volume key presses register almost instantly.
+            // Volume runs every tick; brightness (WMI) every 2nd tick (~120ms);
+            // DND every 8th tick.
+            int tick = 0;
             while (true)
             {
-                Thread.Sleep(250);
+                Thread.Sleep(60);
+                tick++;
 
-                LASTINPUTINFO lastInput = new LASTINPUTINFO();
-                lastInput.cbSize = (uint)Marshal.SizeOf(lastInput);
-                GetLastInputInfo(ref lastInput);
-                
-                bool isUserActive = (Environment.TickCount - lastInput.dwTime) < 15000;
-
-                if ((GetAsyncKeyState(VK_VOLUME_UP) & 1) != 0 || 
-                    (GetAsyncKeyState(VK_VOLUME_DOWN) & 1) != 0 || 
-                    (GetAsyncKeyState(VK_VOLUME_MUTE) & 1) != 0) 
+                if ((GetAsyncKeyState(VK_VOLUME_UP) & 1) != 0 ||
+                    (GetAsyncKeyState(VK_VOLUME_DOWN) & 1) != 0 ||
+                    (GetAsyncKeyState(VK_VOLUME_MUTE) & 1) != 0)
                 {
                     Console.WriteLine("VOL_FLYOUT|" + GetVolume());
-                }
-
-                int dnd = GetDndState();
-                if (dnd != -1 && dnd != lastDnd)
-                {
-                    Console.WriteLine("DND|" + dnd);
-                    lastDnd = dnd;
                 }
 
                 int vol = GetVolume();
@@ -231,17 +235,46 @@ namespace SysMonitor
                     lastVol = vol;
                 }
 
-                int bright = GetBrightness();
-                if (bright != -1 && bright != lastBright)
+                // Brightness ramp detection every ~120ms.
+                if (tick % 2 == 0)
                 {
-                    if (isUserActive)
+                    int bright = GetBrightness();
+                    if (bright != -1)
                     {
-                        if (Math.Abs(bright - lastBright) >= 9) 
+                        if (bright != lastBright)
                         {
-                            Console.WriteLine("BRIGHT|" + bright);
+                            brightStreak++;
+                            brightStable = 0;
+                            brightPending = true;
+                            lastBright = bright;
+                        }
+                        else if (brightPending)
+                        {
+                            brightStable++;
+                            // Settled (~240ms stable) → decide manual vs auto.
+                            if (brightStable >= 2)
+                            {
+                                // <=2 changing samples = a discrete key step.
+                                if (brightStreak <= 2)
+                                {
+                                    Console.WriteLine("BRIGHT|" + bright);
+                                }
+                                brightPending = false;
+                                brightStreak = 0;
+                            }
                         }
                     }
-                    lastBright = bright;
+                }
+
+                // DND every 8th tick (~480ms) — it changes rarely.
+                if (tick % 8 == 0)
+                {
+                    int dnd = GetDndState();
+                    if (dnd != -1 && dnd != lastDnd)
+                    {
+                        Console.WriteLine("DND|" + dnd);
+                        lastDnd = dnd;
+                    }
                 }
             }
         }

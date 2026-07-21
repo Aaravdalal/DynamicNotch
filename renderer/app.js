@@ -161,7 +161,7 @@ const panelMap = {
   slider:          'panelSlider',
   'file-tray':     'panelIdle',
   video:           'panelVideo',
-  download:        'panelDownload',
+  camera:          'panelCamera',
   dnd:             'panelDnd',
   'msg-mini':      'panelMsgMini',
   'msg-expanded':  'panelMsgExpanded',
@@ -274,14 +274,23 @@ function handleBluetoothUpdate(device) {
   }
 }
 
+// True while a Face ID scan (lock screen or Windows Hello enrollment/passkey)
+// is animating. decideState() must not recompute the notch out from under it,
+// or background pollers (battery/calendar/recording) will stomp 'unlock' back
+// to 'idle' within milliseconds and the animation never becomes visible.
+let faceScanActive = false;
+
 function decideState() {
+  if (faceScanActive) return; // Protect the Face ID scan animation
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
-  if (currentState === 'file-tray' || currentState === 'video') return; // Don't override active states
+  if (currentState === 'file-tray' || currentState === 'video' || currentState === 'camera') return; // Don't override active states
   if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads' || currentState === 'startup') return; // Protect message and startup states
 
   let s = 'idle';
   if (recordingData.recording) s = 'recording';
   else if (isTimerActive) s = 'timer';
+  // Only take over the collapsed pill — never hijack an already-expanded panel.
+  else if (downloadActive && !isExpanded) s = 'download';
   else if (battToastTimeout) s = 'battery';
   else if (btToastTimeout) s = 'bluetooth';
   else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
@@ -346,6 +355,65 @@ function collapse() {
   decideState(); // Refresh sub-notch etc.
 }
 
+/* ─── Camera notch ─── */
+let camStream = null;
+let camZoom = 1;
+const CAM_ZOOM_MIN = 1, CAM_ZOOM_MAX = 4;
+
+function applyCamZoom() {
+  const video = document.getElementById('camVideo');
+  if (!video) return;
+  // Combine the selfie mirror (scaleX -1) with the pinch zoom factor.
+  video.style.transform = 'scaleX(-1) scale(' + camZoom + ')';
+}
+
+function openCamera() {
+  const panel = document.getElementById('panelCamera');
+  const video = document.getElementById('camVideo');
+  const errEl = document.getElementById('camError');
+  if (!panel || !video) return;
+  panel.classList.remove('cam-failed', 'cam-ready');
+  camZoom = 1;
+  applyCamZoom();
+
+  forcedPanel = 'panelCamera';
+  currentState = 'camera';
+  notch.setAttribute('data-state', 'camera');
+  if (!isExpanded) expand(); else showActivePanel();
+
+  navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    .then(stream => {
+      camStream = stream;
+      video.srcObject = stream;
+      // Only reveal the feed once frames are actually flowing — seamless load.
+      const reveal = () => panel.classList.add('cam-ready');
+      video.addEventListener('playing', reveal, { once: true });
+      // Fallback in case 'playing' doesn't fire on some drivers.
+      video.addEventListener('loadeddata', reveal, { once: true });
+    })
+    .catch(err => {
+      console.error('[Camera] getUserMedia failed:', err);
+      if (errEl) errEl.textContent = 'Camera unavailable' + (err && err.name ? ' (' + err.name + ')' : '');
+      panel.classList.add('cam-failed');
+    });
+}
+
+function closeCamera() {
+  const video = document.getElementById('camVideo');
+  const panel = document.getElementById('panelCamera');
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  if (video) video.srcObject = null;
+  if (panel) panel.classList.remove('cam-ready', 'cam-failed');
+  forcedPanel = null;
+  if (currentState === 'camera') currentState = 'idle';
+  notch.setAttribute('data-state', 'idle');
+  collapse();
+  decideState();
+}
+
 let isMicRecording = false;
 
 /* ─── Interactions ─── */
@@ -397,6 +465,8 @@ function handleNotchLeave() {
   if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
   if (currentState === 'file-tray' && isDragActive) return;
   if (currentState === 'recording') return;
+  if (currentState === 'camera') return; // Camera stays open until explicitly closed
+  if (isDraggingSlider) return; // Don't collapse while dragging the vol/bright slider
   if (ignoreMouseLeave) return;
 
   if (isExpanded) {
@@ -561,6 +631,37 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       }
       renderFileTray();
     });
+  }
+
+  const dashOpenCamBtn = document.getElementById('dashOpenCamBtn');
+  if (dashOpenCamBtn) {
+    dashOpenCamBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (currentState === 'camera' && isExpanded) { closeCamera(); return; }
+      openCamera();
+    });
+  }
+
+  const camCloseBtn = document.getElementById('camCloseBtn');
+  if (camCloseBtn) {
+    camCloseBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      closeCamera();
+    });
+  }
+
+  // Two-finger pinch zoom on the camera. Trackpad pinch arrives as a wheel
+  // event with ctrlKey set (Chromium convention); a plain wheel also zooms.
+  const camPanel = document.getElementById('panelCamera');
+  if (camPanel) {
+    camPanel.addEventListener('wheel', e => {
+      if (currentState !== 'camera') return;
+      e.preventDefault();
+      // ctrlKey (pinch) gestures are finer-grained; scale the step accordingly.
+      const step = e.ctrlKey ? e.deltaY * 0.01 : e.deltaY * 0.003;
+      camZoom = Math.min(CAM_ZOOM_MAX, Math.max(CAM_ZOOM_MIN, camZoom - step));
+      applyCamZoom();
+    }, { passive: false });
   }
 
   const sub = document.getElementById('subNotch');
@@ -2215,18 +2316,40 @@ async function fetchRecording() {
   // Face ID notch: shared by the lock screen (lock-monitor) and by the Windows
   // Hello passkey prompt / Face ID setup (hello-monitor).
   let faceScanSafety = null;
+  let faceidLottieAnim = null;
   function faceScanStart() {
     clearTimeout(faceScanSafety);
+    faceScanActive = true; // guard decideState() from stomping 'unlock'
     notch.classList.remove('success');
+    if (faceidLottieAnim) faceidLottieAnim.goToAndStop(0, true);
     setState('unlock'); expand();
-    // Safety: if we never get a "done" signal, don't stay stuck scanning.
-    faceScanSafety = setTimeout(faceScanSuccess, 20000);
+    // Stay in the scanning state for as long as the scan is running — Face ID
+    // enrollment / "improve recognition" can take a while. The checkmark only
+    // plays when we get the real "done" signal (FACE:STOP / UNLOCK). This long
+    // timeout is only a last-resort safety so we never get stuck forever.
+    faceScanSafety = setTimeout(faceScanSuccess, 5 * 60 * 1000);
   }
   function faceScanSuccess() {
     clearTimeout(faceScanSafety);
-    if (currentState !== 'unlock') return; // nothing to finish
+    if (!faceScanActive) return; // nothing to finish
     notch.classList.add('success');
-    setTimeout(() => { collapse(); notch.classList.remove('success'); setTimeout(decideState, 400); }, 1200);
+    const finish = () => { faceScanActive = false; collapse(); notch.classList.remove('success'); setTimeout(decideState, 400); };
+    const lottieEl = document.getElementById('faceidLottie');
+    if (lottieEl && window.lottie) {
+      if (!faceidLottieAnim) {
+        faceidLottieAnim = window.lottie.loadAnimation({
+          container: lottieEl,
+          renderer: 'svg',
+          loop: false,
+          autoplay: false,
+          path: '../assets/face-id-success.json'
+        });
+        faceidLottieAnim.addEventListener('complete', () => setTimeout(finish, 300));
+      }
+      faceidLottieAnim.goToAndPlay(0, true);
+    } else {
+      setTimeout(finish, 1200);
+    }
   }
 
   if (window.notchAPI.onLockUpdate) {
@@ -2273,37 +2396,46 @@ let currentSliderType = 'vol';
 let isDraggingSlider = false;
 let sliderTimeout = null;
 
+let sliderIconKind = null; // 'vol' | 'bright' — only rewrite the icon on change
 function updateSliderUI(val, isBright, fromDrag = false) {
-  const d = document.getElementById('sliderDashes');
+  const fill = document.getElementById('sliderFill');
   const p = document.getElementById('sliderPct');
   const i = document.getElementById('sliderIcon');
-  if (!d || !p || !i) return;
+  if (!fill || !p || !i) return;
 
   if (!fromDrag) {
     currentSliderType = isBright ? 'bright' : 'vol';
   }
 
-  d.innerHTML = '';
-  const maxDashes = 34;
-  const activeDashes = Math.round((val / 100) * maxDashes);
-  for (let j = 0; j < maxDashes; j++) {
-    const dash = document.createElement('div');
-    dash.className = 'slider-dash' + (j < activeDashes ? ' active' : '');
-    d.appendChild(dash);
-  }
-  p.textContent = val + '%';
+  // Hot path: only the fill + number update on every tick. Use a GPU-composited
+  // transform (scaleX) instead of animating `width`, which avoids per-frame
+  // layout and keeps the bar buttery under rapid volume/brightness changes.
+  const clamped = Math.max(0, Math.min(100, val));
+  fill.style.transform = 'scaleX(' + (clamped / 100) + ')';
+  p.textContent = clamped;
 
-  if (isBright) {
-    i.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3zm0-13l2.32 3.23h3.45v3.45L21 12l-3.23 2.32v3.45h-3.45L12 21l-2.32-3.23H6.23v-3.45L3 12l3.23-2.32V6.23h3.45L12 2z"/></svg>';
-  } else {
-    i.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+  // Only touch the DOM-heavy icon markup when the kind actually changes.
+  const kind = isBright ? 'bright' : 'vol';
+  if (kind !== sliderIconKind) {
+    sliderIconKind = kind;
+    if (isBright) {
+      // Brightness: sun icon replaces the volume/speaker icon.
+      i.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3zm0-13l2.32 3.23h3.45v3.45L21 12l-3.23 2.32v3.45h-3.45L12 21l-2.32-3.23H6.23v-3.45L3 12l3.23-2.32V6.23h3.45L12 2z"/></svg>';
+    } else {
+      i.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+    }
   }
 
+  // Switch into the slider panel only once — subsequent value ticks skip the
+  // heavy expand()/showActivePanel() layout pass entirely.
   if (!fromDrag) {
     forcedPanel = 'panelSlider';
-    notch.setAttribute('data-state', 'slider');
-    expand();
-    showActivePanel();
+    const alreadyShowing = isExpanded && notch.getAttribute('data-state') === 'slider';
+    if (!alreadyShowing) {
+      notch.setAttribute('data-state', 'slider');
+      expand();
+      showActivePanel();
+    }
   }
 }
 
@@ -2334,6 +2466,9 @@ function handleSliderDrag(e, commit = false) {
   x = Math.max(0, Math.min(x, rect.width));
   let val = Math.round((x / rect.width) * 100);
   updateSliderUI(val, currentSliderType === 'bright', true);
+  // Keep the notch open while the user is dragging — reset the hide countdown
+  // on every drag event so it only starts counting after they let go.
+  scheduleSliderHide();
   if (commit && window.notchAPI.setSysVal) {
     window.notchAPI.setSysVal(currentSliderType, val);
   }
@@ -2366,81 +2501,84 @@ if (window.notchAPI.onSysDnd) {
   });
 }
 
+// Restart the slider's auto-hide countdown. Called on first show and on every
+// interaction (drag) so the notch never vanishes while you're actively using
+// the control. If a drag is still in progress when it fires, it reschedules
+// instead of collapsing.
+function scheduleSliderHide() {
+  clearTimeout(sliderTimeout);
+  sliderTimeout = setTimeout(() => {
+    if (isDraggingSlider) { scheduleSliderHide(); return; }
+    forcedPanel = null;
+    collapse();
+  }, 1500);
+}
+
 function showSlider(val, isBright) {
   // Don't interrupt startup animation
   if (currentState === 'startup') return;
 
+  // updateSliderUI handles the panel switch on first show and is a light
+  // fill-only update on subsequent ticks — no redundant layout work here.
   updateSliderUI(val, isBright, false);
-  forcedPanel = 'panelSlider';
-  notch.setAttribute('data-state', 'slider');
-  expand();
-  showActivePanel();
-  
-  clearTimeout(sliderTimeout);
-  sliderTimeout = setTimeout(() => {
-    forcedPanel = null;
-    collapse();
-  }, 2000);
+  scheduleSliderHide();
 }
 
 if (window.notchAPI.onSysVol) window.notchAPI.onSysVol(v => showSlider(v, false));
 if (window.notchAPI.onSysBright) window.notchAPI.onSysBright(v => showSlider(v, true));
 
-let downloadTimeout = null;
+// Download indicator: a small ring in the collapsed pill (never expands the
+// notch). Ring fill tracks real byte progress when known; falls back to a
+// spinning indeterminate ring when the source (e.g. an external browser
+// download) doesn't expose a total size.
+let downloadActive = false;
+let downloadCompleteTimeout = null;
+const DL_RING_CIRC = 2 * Math.PI * 15;
 if (window.notchAPI.onDownloadUpdate) {
   window.notchAPI.onDownloadUpdate((data) => {
-    const { state, filename } = data;
-    const dlArrow = document.getElementById('dlArrow');
-    const dlCheck = document.getElementById('dlCheck');
-    const dlTitle = document.getElementById('dlTitle');
-    const dlFilename = document.getElementById('dlFilename');
-    
-    if (dlFilename) dlFilename.textContent = filename || '';
-    
+    // Don't interrupt startup animation
+    if (currentState === 'startup') return;
+
+    const { state, filename, percent } = data;
+    const cDlRingSvg = document.getElementById('cDlRingSvg');
+    const cDlRingFill = document.getElementById('cDlRingFill');
+    const cDlCheck = document.getElementById('cDlCheck');
+    const cDlName = document.getElementById('cDlName');
+
+    if (cDlName && filename) cDlName.textContent = filename;
+
     if (state === 'downloading') {
-      // Don't interrupt startup animation
-      if (currentState === 'startup') return;
-
-      dlTitle.textContent = 'Downloading...';
-      dlTitle.style.color = '#fff';
-      dlArrow.style.display = 'block';
-      dlCheck.style.display = 'none';
-      dlArrow.classList.add('dl-anim-bounce');
-      dlCheck.classList.remove('dl-check-anim');
-      
-      forcedPanel = 'panelDownload';
-      notch.setAttribute('data-state', 'download');
-      expand();
-      showActivePanel();
-      
-      clearTimeout(downloadTimeout);
-    } else if (state === 'complete') {
-      // Don't interrupt startup animation
-      if (currentState === 'startup') return;
-
-      dlTitle.textContent = 'Download Complete';
-      dlTitle.style.color = '#0a84ff';
-      dlCheck.style.stroke = '#0a84ff';
-      dlArrow.style.display = 'none';
-      dlCheck.style.display = 'block';
-      dlArrow.classList.remove('dl-anim-bounce');
-      
-      dlCheck.classList.remove('dl-check-anim');
-      void dlCheck.offsetWidth; // trigger reflow
-      dlCheck.classList.add('dl-check-anim');
-      
-      forcedPanel = 'panelDownload';
-      notch.setAttribute('data-state', 'download');
-      expand();
-      showActivePanel();
-      
-      clearTimeout(downloadTimeout);
-      downloadTimeout = setTimeout(() => {
-        if (forcedPanel === 'panelDownload') {
-          forcedPanel = null;
-          collapse();
+      clearTimeout(downloadCompleteTimeout);
+      downloadActive = true;
+      if (cDlCheck) cDlCheck.style.display = 'none';
+      if (cDlRingSvg) cDlRingSvg.style.display = 'block';
+      if (cDlRingFill) {
+        cDlRingFill.setAttribute('stroke-dasharray', DL_RING_CIRC);
+        if (typeof percent === 'number') {
+          cDlRingFill.classList.remove('indeterminate');
+          const pct = Math.max(0, Math.min(100, percent));
+          cDlRingFill.setAttribute('stroke-dashoffset', DL_RING_CIRC - (pct / 100) * DL_RING_CIRC);
+        } else {
+          cDlRingFill.classList.add('indeterminate');
         }
-      }, 3000);
+      }
+      decideState();
+    } else if (state === 'complete') {
+      downloadActive = true; // keep the pill slot showing the checkmark briefly
+      if (cDlRingSvg) cDlRingSvg.style.display = 'none';
+      if (cDlCheck) {
+        cDlCheck.style.display = 'block';
+        cDlCheck.classList.remove('dl-check-anim');
+        void cDlCheck.offsetWidth; // trigger reflow
+        cDlCheck.classList.add('dl-check-anim');
+      }
+      decideState();
+
+      clearTimeout(downloadCompleteTimeout);
+      downloadCompleteTimeout = setTimeout(() => {
+        downloadActive = false;
+        decideState();
+      }, 2500);
     }
   });
 }
@@ -2567,16 +2705,25 @@ let watchlist = [];
 try { watchlist = JSON.parse(localStorage.getItem('stocksWatchlist') || '[]') || []; } catch (e) {}
 let stocksInterval = null;
 
-function sparkPoints(vals, w = 100, h = 16) {
-  if (!vals || vals.length < 2) return '';
-  const min = Math.min(...vals), max = Math.max(...vals);
+// Builds the intraday line the way Google Finance draws it:
+//  • x is scaled by REAL TIME, so a lull with no trades shows as a flat stretch
+//    instead of being collapsed into evenly-spaced points.
+//  • the previous close is kept inside the y-domain and returned as a baseline,
+//    so how far the line sits above/below it is meaningful.
+function sparkPoints(pts, prevClose, w = 100, h = 20) {
+  if (!pts || pts.length < 2) return null;
+  const vals = pts.map(p => p.c);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (prevClose != null) { min = Math.min(min, prevClose); max = Math.max(max, prevClose); }
   const range = (max - min) || 1;
   const pad = 1.5;
-  return vals.map((v, i) => {
-    const x = (i / (vals.length - 1)) * w;
-    const y = (h - pad) - ((v - min) / range) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  const t0 = pts[0].t;
+  const span = (pts[pts.length - 1].t - t0) || 1;
+  const yOf = v => (h - pad) - ((v - min) / range) * (h - pad * 2);
+  const line = pts
+    .map(p => `${(((p.t - t0) / span) * w).toFixed(2)},${yOf(p.c).toFixed(2)}`)
+    .join(' ');
+  return { line, baseY: prevClose != null ? yOf(prevClose) : null };
 }
 
 async function fetchStocks() {
@@ -2600,21 +2747,28 @@ async function fetchStocks() {
       const pct = (s.changePct != null)
         ? `${up ? '+' : ''}${s.changePct.toFixed(2)}%`
         : '';
-      const pts = sparkPoints(s.spark, 100, 20);
-      const spark = pts
-        ? `<svg class="stock-spark" viewBox="0 0 100 20" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+      const sp = sparkPoints(s.spark, s.prevClose, 100, 20);
+      const baseline = (sp && sp.baseY != null)
+        ? `<line x1="0" y1="${sp.baseY.toFixed(2)}" x2="100" y2="${sp.baseY.toFixed(2)}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`
+        : '';
+      const spark = sp
+        ? `<svg class="stock-spark" viewBox="0 0 100 20" preserveAspectRatio="none">${baseline}<polyline points="${sp.line}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`
+        : '';
+      const prev = (s.prevClose != null)
+        ? `<div class="stock-prev">Prev ${s.prevClose.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>`
         : '';
       const remove = watch
         ? `<button class="stock-remove" data-symbol="${s.symbol}" title="Remove">×</button>`
         : '';
       return `<div class="stock-item">
         ${remove}
+        ${spark}
         <div class="stock-top">
           <span class="stock-name">${s.label}</span>
           <span class="stock-change ${dir}">${pct}</span>
         </div>
         <div class="stock-price">${price}</div>
-        ${spark}
+        ${prev}
       </div>`;
     }).join('');
     if (watch) {
