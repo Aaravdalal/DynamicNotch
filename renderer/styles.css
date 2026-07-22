@@ -90,7 +90,6 @@ html, body {
 }
 .notch.expanded[data-state="idle"]{width:820px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="hover"]{width:240px;height:64px;border-radius:0 0 24px 24px}
-.notch.expanded[data-state="unlock"]{width:160px;height:160px;border-radius:0 0 32px 32px}
 .notch.expanded[data-state="file-tray"]{width:560px;height:195px;border-radius:0 0 24px 24px}
 .notch.expanded[data-state="charging"],
 .notch.expanded[data-state="unplugged"],
@@ -259,7 +258,6 @@ html, body {
 .notch.expanded[data-state="bluetooth"] #panelBluetooth,
 .notch.expanded[data-state="bt-connected"] .panel-idle,
 .notch.expanded[data-state="bt-music"] .panel-btmusic,
-.notch.expanded[data-state="unlock"] .panel-unlock,
 .notch.expanded[data-state="charging"] #panelCharging,
 .notch.expanded[data-state="unplugged"] #panelUnplugged,
 .notch.expanded[data-state="dnd"] #panelDnd,
@@ -293,17 +291,6 @@ html, body {
 .wb:nth-child(3){animation-delay:.2s}.wb:nth-child(4){animation-delay:.1s}.wb:nth-child(5){animation-delay:0s}
 @keyframes wv{0%{height:4px}100%{height:16px}}
 
-/* ─── UNLOCK ─── */
-.panel-unlock{align-items:center;justify-content:center}
-.faceid-box{width:80px;height:80px;display:flex;align-items:center;justify-content:center;position:relative}
-.faceid-svg{width:100%;height:100%}
-/* Success checkmark (lottie) is intentionally much larger than the scan icon. */
-.faceid-lottie{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;display:none;pointer-events:none}
-.notch[data-state="unlock"].success .faceid-svg{display:none}
-.notch[data-state="unlock"].success .faceid-lottie{display:block}
-/* Grow the notch when the big checkmark plays so it isn't clipped. */
-.notch.expanded[data-state="unlock"].success{width:230px;height:230px}
-
 /* ─── DASHBOARD ICON RAIL ─── */
 .dash-rail{
   position:absolute;left:10px;top:10px;z-index:6;
@@ -336,9 +323,6 @@ html, body {
 /* Only the item under the cursor opens; moving to the next one collapses the
    previous through the same curve, so the two motions read as one handoff. */
 .rail-item:hover{width:95px;box-shadow:0 3px 12px rgba(0,0,0,0.45)}
-/* Home reads as an outline at rest and fills in under the cursor. */
-.rail-grid rect{transition:fill .22s var(--ease)}
-.rail-item:hover .rail-grid rect{fill:currentColor}
 .rail-item:hover .rail-label{opacity:1;transform:none;transition-delay:.07s}
 
 /* ─── CAMERA ─── */
@@ -1185,7 +1169,7 @@ html, body {
 .stock-item{
   flex:1 0 calc((100% - 14px) / 3);min-width:0;position:relative;overflow:visible;
   display:flex;flex-direction:column;gap:1px;
-  background:rgba(0,0,0,0.04);border-radius:10px;padding:6px 8px 16px;
+  background:rgba(0,0,0,0.04);border-radius:10px;padding:6px 8px 20px;
 }
 /* Top row: index name (left) + change% (right), like the reference */
 .stock-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;flex-shrink:0;}
@@ -1194,11 +1178,27 @@ html, body {
 .stock-change.up{color:#16a34a;}
 .stock-change.down{color:#dc2626;}
 .stock-price{flex-shrink:0;font-size:14px;font-weight:800;color:#111;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.stock-prev{flex-shrink:0;font-size:9px;font-weight:600;color:rgba(0,0,0,0.45);line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.stock-spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px;pointer-events:none;opacity:0.95;z-index:0;}
+/* Empty watchlist slot: same footprint as a stock card, just a grey square. */
+.stock-slot{
+  align-items:center;justify-content:center;cursor:pointer;
+  background:rgba(0,0,0,0.07);color:rgba(0,0,0,0.35);
+  border:1px dashed rgba(0,0,0,0.18);padding:6px 8px;
+  transition:background .18s ease,color .18s ease;
+}
+.stock-slot:hover{background:rgba(0,0,0,0.12);color:rgba(0,0,0,0.6);}
+/* The line and its "now" dot share one box so the dot can be placed by
+   percentage — a <circle> inside the SVG would be squashed into an ellipse by
+   preserveAspectRatio="none". */
+.stock-spark-wrap{position:absolute;left:0;right:0;bottom:0;height:20px;pointer-events:none;z-index:0;}
+.stock-spark{position:absolute;inset:0;width:100%;height:100%;opacity:0.95;}
+.stock-dot{
+  position:absolute;width:4px;height:4px;border-radius:50%;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 0 1.5px rgba(255,255,255,0.9);
+}
 /* An absolutely-positioned SVG paints above in-flow content no matter the DOM
    order, so the text needs its own stacking to sit ON TOP of the line. */
-.stock-top,.stock-price,.stock-prev{position:relative;z-index:1;}
+.stock-top,.stock-price{position:relative;z-index:1;}
 
 /* ═══ WIDGET PICKER ═══ */
 .widget-picker{

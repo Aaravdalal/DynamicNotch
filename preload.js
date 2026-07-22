@@ -24,9 +24,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   onLockUpdate: (callback) => {
     ipcRenderer.on('lock-update', (event, str) => callback(str));
   },
-  onFaceIdScan: (callback) => {
-    ipcRenderer.on('faceid-scan', (event, str) => callback(str));
-  },
   onExternalTimerUpdate: (callback) => {
     ipcRenderer.on('external-timer-update', (event, data) => callback(data));
   },

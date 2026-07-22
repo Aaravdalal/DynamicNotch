@@ -140,7 +140,6 @@ const panelMap = {
   bluetooth:       'panelBluetooth',
   'bt-connected':  'panelIdle',
   'bt-music':      'panelBtMusic',
-  unlock:          'panelUnlock',
   charging:        'panelCharging',
   unplugged:       'panelUnplugged',
   'low-battery':   'panelLowBattery',
@@ -273,14 +272,7 @@ function handleBluetoothUpdate(device) {
   }
 }
 
-// True while a Face ID scan (lock screen or Windows Hello enrollment/passkey)
-// is animating. decideState() must not recompute the notch out from under it,
-// or background pollers (battery/calendar/recording) will stomp 'unlock' back
-// to 'idle' within milliseconds and the animation never becomes visible.
-let faceScanActive = false;
-
 function decideState() {
-  if (faceScanActive) return; // Protect the Face ID scan animation
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
   if (forcedPanel === 'panelTimer') return; // "Time's up" hold owns the notch
   if (currentState === 'file-tray' || currentState === 'video' || currentState === 'camera') return; // Don't override active states
@@ -2712,60 +2704,6 @@ async function fetchRecording() {
   }
   if (window.notchAPI.onBluetoothUpdate) window.notchAPI.onBluetoothUpdate(showBluetoothToast);
   if (window.notchAPI.onMediaUpdate) window.notchAPI.onMediaUpdate(handleMediaUpdate);
-  // Face ID notch: shared by the lock screen (lock-monitor) and by the Windows
-  // Hello passkey prompt / Face ID setup (hello-monitor).
-  let faceScanSafety = null;
-  let faceidLottieAnim = null;
-  function faceScanStart() {
-    clearTimeout(faceScanSafety);
-    faceScanActive = true; // guard decideState() from stomping 'unlock'
-    notch.classList.remove('success');
-    if (faceidLottieAnim) faceidLottieAnim.goToAndStop(0, true);
-    setState('unlock'); expand();
-    // Stay in the scanning state for as long as the scan is running — Face ID
-    // enrollment / "improve recognition" can take a while. The checkmark only
-    // plays when we get the real "done" signal (FACE:STOP / UNLOCK). This long
-    // timeout is only a last-resort safety so we never get stuck forever.
-    faceScanSafety = setTimeout(faceScanSuccess, 5 * 60 * 1000);
-  }
-  function faceScanSuccess() {
-    clearTimeout(faceScanSafety);
-    if (!faceScanActive) return; // nothing to finish
-    notch.classList.add('success');
-    const finish = () => { faceScanActive = false; collapse(); notch.classList.remove('success'); setTimeout(decideState, 400); };
-    const lottieEl = document.getElementById('faceidLottie');
-    if (lottieEl && window.lottie) {
-      if (!faceidLottieAnim) {
-        faceidLottieAnim = window.lottie.loadAnimation({
-          container: lottieEl,
-          renderer: 'svg',
-          loop: false,
-          autoplay: false,
-          path: '../assets/face-id-success.json'
-        });
-        faceidLottieAnim.addEventListener('complete', () => setTimeout(finish, 300));
-      }
-      faceidLottieAnim.goToAndPlay(0, true);
-    } else {
-      setTimeout(finish, 1200);
-    }
-  }
-
-  if (window.notchAPI.onLockUpdate) {
-    window.notchAPI.onLockUpdate(e => {
-      if (e === 'LOCK') faceScanStart();
-      else if (e === 'UNLOCK') faceScanSuccess();
-    });
-  }
-
-  // Windows Hello passkey prompt / Face ID enrollment → same animation.
-  if (window.notchAPI.onFaceIdScan) {
-    window.notchAPI.onFaceIdScan(e => {
-      if (e === 'START') faceScanStart();
-      else if (e === 'STOP') faceScanSuccess();
-    });
-  }
-
   window.notchAPI.onAudioPeak((peak) => {
     updateVisualizerWithPeak(peak);
   });
@@ -3098,39 +3036,77 @@ if (!selectedWidgets.length) selectedWidgets = ['weather'];
 let widgetIndex = 0;
 
 // Stocks widget: 'market' (indices) or 'watchlist' (user-chosen symbols).
+const STOCK_SLOTS = 3; // watchlist keeps the Markets grid: three cards wide
 let stocksMode = 'market';
 try { stocksMode = localStorage.getItem('stocksMode') || 'market'; } catch (e) {}
 let watchlist = [];
 try { watchlist = JSON.parse(localStorage.getItem('stocksWatchlist') || '[]') || []; } catch (e) {}
 let stocksInterval = null;
 
-// Builds the intraday line the way Google Finance draws it:
-//  • x is scaled by REAL TIME, so a lull with no trades shows as a flat stretch
-//    instead of being collapsed into evenly-spaced points.
-//  • the previous close is kept inside the y-domain and returned as a baseline,
-//    so how far the line sits above/below it is meaningful.
-function sparkPoints(pts, prevClose, w = 100, h = 20) {
+// Plots the price line honestly on both axes. The data itself was always real
+// Yahoo intraday data; the drawing was what misrepresented it:
+//
+//  • x used to span first bar → last bar, so a half-finished session was
+//    stretched edge to edge and 30 minutes of trading filled the whole card.
+//    It now spans the real session (open → close), so the line reaches only as
+//    far as the time of day it actually got to.
+//  • y used to be exactly the day's min → max, so the line hit the top and
+//    bottom of the strip whether the stock moved 0.05% or 5% — every chart
+//    looked like the same dramatic rollercoaster. The previous close is now
+//    kept inside the domain (without drawing it), which is how a 1D chart is
+//    scaled: a flat day looks flat and a big move looks big.
+function sparkPoints(pts, prevClose, sessionStart, sessionEnd, w = 100, h = 20) {
   if (!pts || pts.length < 2) return null;
   const vals = pts.map(p => p.c);
   let min = Math.min(...vals), max = Math.max(...vals);
   if (prevClose != null) { min = Math.min(min, prevClose); max = Math.max(max, prevClose); }
   const range = (max - min) || 1;
-  const pad = 1.5;
-  const t0 = pts[0].t;
-  const span = (pts[pts.length - 1].t - t0) || 1;
+  const pad = 2;
+
+  const t0 = (sessionStart != null) ? sessionStart : pts[0].t;
+  const t1 = (sessionEnd != null) ? sessionEnd : pts[pts.length - 1].t;
+  const span = (t1 - t0) || 1;
+
   const yOf = v => (h - pad) - ((v - min) / range) * (h - pad * 2);
-  const line = pts
-    .map(p => `${(((p.t - t0) / span) * w).toFixed(2)},${yOf(p.c).toFixed(2)}`)
-    .join(' ');
-  return { line, baseY: prevClose != null ? yOf(prevClose) : null };
+  const xOf = t => Math.max(0, Math.min(w, ((t - t0) / span) * w));
+  const xy = pts.map(p => [xOf(p.t), yOf(p.c)]);
+  const line = xy.map(p => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
+  const last = xy[xy.length - 1];
+  // Percentages, so the "now" marker can be a real circle: the SVG is drawn
+  // with preserveAspectRatio="none", which would squash a <circle> into an
+  // ellipse.
+  return {
+    line,
+    area: `${xy[0][0].toFixed(2)},${h} ${line} ${last[0].toFixed(2)},${h}`,
+    dotLeft: (last[0] / w) * 100,
+    dotTop: (last[1] / h) * 100,
+  };
 }
 
 async function fetchStocks() {
   const row = document.getElementById('stocksRow');
   if (!row) return;
   const watch = stocksMode === 'watchlist';
+  // The watchlist always shows three slots in the same grid as Markets: filled
+  // ones hold the stock, the rest are empty squares you click to add.
+  const emptySlot = '<div class="stock-item stock-slot" title="Add a symbol">' +
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">' +
+    '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div>';
+  const padSlots = (html, filled) =>
+    html + emptySlot.repeat(Math.max(0, STOCK_SLOTS - filled));
+  const wireSlots = () => {
+    row.querySelectorAll('.stock-slot').forEach(slot => {
+      slot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = document.getElementById('watchlistInput');
+        if (input) input.focus();
+      });
+    });
+  };
+
   if (watch && watchlist.length === 0) {
-    row.innerHTML = '<div class="stocks-loading">Add symbols above to build your watchlist</div>';
+    row.innerHTML = padSlots('', 0);
+    wireSlots();
     return;
   }
   try {
@@ -3146,15 +3122,20 @@ async function fetchStocks() {
       const pct = (s.changePct != null)
         ? `${up ? '+' : ''}${s.changePct.toFixed(2)}%`
         : '';
-      const sp = sparkPoints(s.spark, s.prevClose, 100, 20);
-      const baseline = (sp && sp.baseY != null)
-        ? `<line x1="0" y1="${sp.baseY.toFixed(2)}" x2="100" y2="${sp.baseY.toFixed(2)}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`
-        : '';
+      const sp = sparkPoints(s.spark, s.prevClose, s.sessionStart, s.sessionEnd, 100, 20);
+      const fillId = `sf${s.symbol.replace(/[^a-z0-9]/gi, '')}`;
       const spark = sp
-        ? `<svg class="stock-spark" viewBox="0 0 100 20" preserveAspectRatio="none">${baseline}<polyline points="${sp.line}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`
-        : '';
-      const prev = (s.prevClose != null)
-        ? `<div class="stock-prev">Prev ${s.prevClose.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>`
+        ? `<div class="stock-spark-wrap">
+             <svg class="stock-spark" viewBox="0 0 100 20" preserveAspectRatio="none">
+               <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+                 <stop offset="0%" stop-color="${color}" stop-opacity="0.22"/>
+                 <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+               </linearGradient></defs>
+               <polygon points="${sp.area}" fill="url(#${fillId})"/>
+               <polyline points="${sp.line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+             </svg>
+             <span class="stock-dot" style="left:${sp.dotLeft.toFixed(2)}%;top:${sp.dotTop.toFixed(2)}%;background:${color}"></span>
+           </div>`
         : '';
       const remove = watch
         ? `<button class="stock-remove" data-symbol="${s.symbol}" title="Remove">×</button>`
@@ -3167,10 +3148,11 @@ async function fetchStocks() {
           <span class="stock-change ${dir}">${pct}</span>
         </div>
         <div class="stock-price">${price}</div>
-        ${prev}
       </div>`;
     }).join('');
     if (watch) {
+      row.innerHTML = padSlots(row.innerHTML, data.length);
+      wireSlots();
       row.querySelectorAll('.stock-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -3179,7 +3161,12 @@ async function fetchStocks() {
       });
     }
   } catch (e) {
-    row.innerHTML = '<div class="stocks-loading">Markets unavailable</div>';
+    if (watch) {
+      row.innerHTML = padSlots('', 0);
+      wireSlots();
+    } else {
+      row.innerHTML = '<div class="stocks-loading">Markets unavailable</div>';
+    }
   }
 }
 

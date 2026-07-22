@@ -237,41 +237,6 @@ function createWindow() {
       }
     });
 
-    // Start Windows Hello / Face ID watcher — fires the notch's Face ID animation
-    // when the Windows Security passkey prompt (e.g. Google sign-in with face) or
-    // the Hello facial-recognition setup window appears.
-    const helloMonitorProc = spawnTracked('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'hello-monitor.ps1')], { windowsHide: true });
-    let helloBuffer = '';
-    let faceZOrderInterval = null;
-    helloMonitorProc.stdout.on('data', (data) => {
-      helloBuffer += data.toString();
-      const lines = helloBuffer.split(/\r?\n/);
-      helloBuffer = lines.pop();
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed === 'FACE:START') {
-          safeSend('faceid-scan', 'START');
-          // The Windows Hello dialog is a freshly-focused window that keeps
-          // re-claiming the topmost z-order, so a one-off setAlwaysOnTop isn't
-          // enough — moveTop() has to be nudged repeatedly for as long as the
-          // dialog is up, or the notch renders but stays hidden behind it.
-          clearInterval(faceZOrderInterval);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            try { mainWindow.setAlwaysOnTop(true, 'screen-saver'); mainWindow.moveTop(); } catch (e) {}
-          }
-          faceZOrderInterval = setInterval(() => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              try { mainWindow.moveTop(); } catch (e) {}
-            }
-          }, 250);
-        } else if (trimmed === 'FACE:STOP') {
-          safeSend('faceid-scan', 'STOP');
-          clearInterval(faceZOrderInterval);
-          faceZOrderInterval = null;
-        }
-      }
-    });
-
     // Start Sys Monitor (Volume & Brightness)
     const sysMonitorProc = spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [], { windowsHide: true });
     let sysBuffer = '';
@@ -1204,15 +1169,31 @@ app.whenReady().then(() => {
 
         let spark = [];
         let intraday = false;
+        // Real session bounds, so the renderer can plot the line against the
+        // whole trading day instead of stretching a partial day edge to edge.
+        let sessionStart = null, sessionEnd = null;
         try {
-          // Pull a few days of 5-minute bars, then keep only the most recent
+          // Pull a few days of intraday bars, then keep only the most recent
           // REGULAR session. Asking for "since local midnight" broke on
           // weekends, holidays and non-US timezones; this always lands on the
           // real last trading day, matching Google Finance's 1D view.
-          const ch = await yf.chart(t.symbol, {
-            period1: new Date(Date.now() - 5 * 24 * 3600 * 1000),
-            interval: '5m',
-          });
+          //
+          // 1-minute granularity matches what Google Finance plots (~390 points
+          // a session). At 5m the line is only 79 points, which smooths out
+          // real intraday movement and visibly disagrees with their chart —
+          // most obvious on single stocks. Yahoo only serves 1m for recent
+          // days, so fall back to 5m when it comes back empty.
+          let ch = null;
+          for (const interval of ['1m', '5m']) {
+            try {
+              const attempt = await yf.chart(t.symbol, {
+                period1: new Date(Date.now() - (interval === '1m' ? 4 : 5) * 24 * 3600 * 1000),
+                interval,
+              });
+              if (attempt && (attempt.quotes || []).length) { ch = attempt; break; }
+            } catch (e) { /* try the coarser interval */ }
+          }
+          if (!ch) throw new Error('no intraday data');
 
           // Session bounds come from the exchange's own metadata rather than
           // hardcoded NYSE hours, so watchlist symbols on other exchanges get
@@ -1247,6 +1228,30 @@ app.whenReady().then(() => {
               .filter(p => dayIn(p.date) === lastDay)
               .map(p => ({ t: new Date(p.date).getTime(), c: p.close }));
             intraday = spark.length >= 2;
+
+            if (intraday) {
+              // Anchor the x-axis to the session the bars belong to: take the
+              // first bar's day and rebuild open/close from the exchange window.
+              const first = new Date(spark[0].t);
+              const dayStart = new Date(first);
+              dayStart.setTime(first.getTime() - minIn(first) * 60000);
+              sessionStart = dayStart.getTime() + openMin * 60000;
+              sessionEnd = dayStart.getTime() + closeMin * 60000;
+
+              // Finish the line on the price the card actually displays. The
+              // last bar can sit well below it — the closing auction print
+              // lands after the final bar, and while trading it is simply
+              // stale — which left the line ending somewhere that contradicted
+              // the quote and its percentage.
+              const livePrice = q.regularMarketPrice;
+              if (typeof livePrice === 'number') {
+                const qt = q.regularMarketTime ? new Date(q.regularMarketTime).getTime() : Date.now();
+                const endT = Math.min(Math.max(qt, spark[spark.length - 1].t), sessionEnd);
+                if (Math.abs(livePrice - spark[spark.length - 1].c) > 1e-9) {
+                  spark.push({ t: endT, c: livePrice });
+                }
+              }
+            }
           }
         } catch (e) {}
 
@@ -1270,6 +1275,8 @@ app.whenReady().then(() => {
           changePct: q.regularMarketChangePercent ?? null,
           prevClose,
           intraday,
+          sessionStart,
+          sessionEnd,
           spark,
         };
       } catch (e) {
