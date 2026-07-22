@@ -6,7 +6,7 @@ Dynamic Notch is an Apple-inspired concept. Think of it as a Dynamic Island in a
 
 ## What does it do?
 
-Well, a LOT. I put so much effort into this, it is crazy and it paid off. You can:
+Well, a LOT.You can:
 
 * **View the time and battery indicator**
 * **Search directly on it**
