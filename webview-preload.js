@@ -30,6 +30,12 @@ window.addEventListener('message', (event) => {
 // This window is the one signed into Google Messages, so replies are typed
 // here. Every attempt reports back a real result; main must never have to
 // infer success from the page URL.
+//
+// EVERYTHING below stays inside this IIFE. contextIsolation is off for this
+// window, so preload top-level declarations share a global scope with the page
+// — leaking names like `sleep` or `waitFor` collides with Google's own scripts
+// and blanks the pairing QR.
+(function () {
 const isMessages = () => window.location.hostname.includes('messages.google.com');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -166,3 +172,4 @@ ipcRenderer.on('hidden-send-reply', async (event, payload) => {
     ipcRenderer.send('hidden-reply-result', { id: job.id, ok: false, error: e.message });
   }
 });
+})();

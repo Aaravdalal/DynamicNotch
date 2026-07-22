@@ -858,9 +858,22 @@ function createHiddenWindows() {
   hiddenMessages = new BrowserWindow(commonOptions);
   hiddenMessages.webContents.setUserAgent(chromeUA);
 
+  // Surface page-side errors in the app log — the pairing page fails silently
+  // otherwise. Errors only; Google's preload warnings are constant noise.
+  hiddenMessages.webContents.on('console-message', (e, level, message, line, sourceId) => {
+    if (level >= 3) console.log('[MessagesPage]', message, '@', (sourceId || '').slice(-60) + ':' + line);
+  });
+
   hiddenMessages.webContents.on('did-finish-load', () => {
     const url = hiddenMessages.webContents.getURL();
     console.log('[Messages] Page loaded:', url);
+
+    // The QR paints correctly offscreen but the on-screen surface can stay
+    // stale when the window is revealed, so repaint whenever the auth page
+    // finishes loading while visible.
+    if (url.includes('/authentication') && hiddenMessages.isVisible()) {
+      forceRepaint(hiddenMessages);
+    }
 
     // Inject the Notification interceptor via executeJavaScript().
     // This bypasses Google's Trusted Types CSP that blocks script.textContent.
@@ -958,6 +971,24 @@ ipcMain.on('hidden-live-message', (event, data) => {
 // Surfaces the hidden Google Messages window so the user can scan the QR
 // pairing code. Shared by the tray menu, the "open-login-window" IPC call,
 // and the reply pipeline's not-signed-in fallback below.
+// Kick Chromium into recompositing a window. A window created with show:false
+// renders offscreen fine — capturePage() of the blank-looking pairing page
+// showed a perfectly good QR — but with hardware acceleration off, the surface
+// it presents after being revealed can stay stale, leaving the QR area white.
+// invalidate() alone isn't always enough, so also nudge the bounds by a pixel,
+// which forces the compositor to rebuild the whole surface.
+function forceRepaint(win) {
+  if (!win || win.isDestroyed()) return;
+  try {
+    win.webContents.invalidate();
+    const bounds = win.getBounds();
+    win.setBounds({ ...bounds, height: bounds.height + 1 });
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.setBounds(bounds);
+    }, 60);
+  } catch (e) {}
+}
+
 function showMessagesLogin() {
   if (!hiddenMessages) return;
   hiddenMessages.setOpacity(1);
@@ -975,6 +1006,11 @@ function showMessagesLogin() {
       hiddenMessages.webContents.reload();
     }
   } catch (e) {}
+
+  // Repaint once the window is actually up, and again shortly after in case the
+  // reload's first frame lands before the surface is ready.
+  forceRepaint(hiddenMessages);
+  setTimeout(() => forceRepaint(hiddenMessages), 900);
 
   hiddenMessages.removeAllListeners('close');
   hiddenMessages.on('close', (e) => {
