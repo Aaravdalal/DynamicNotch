@@ -804,10 +804,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
         currentState = 'video';
         notch.setAttribute('data-state', 'video');
         showActivePanel();
-        const mainYtIframe = document.getElementById('mainYtIframe');
-        if (mainYtIframe) {
-          mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-        }
+        openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
       }
     });
   }
@@ -843,10 +840,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
         currentState = 'video';
         notch.setAttribute('data-state', 'video');
         showActivePanel();
-        const mainYtIframe = document.getElementById('mainYtIframe');
-        if (mainYtIframe) {
-          mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-        }
+        openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
       }
     });
   }
@@ -855,8 +849,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   if (closeVideoBtn) {
     closeVideoBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const mainYtIframe = document.getElementById('mainYtIframe');
-      if (mainYtIframe) mainYtIframe.src = '';
+      closePipVideo();
       
       // Return to music panel (or idle depending on if music is playing)
       currentState = mediaData.playing ? 'music' : 'idle';
@@ -933,10 +926,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       currentState = 'video';
       notch.setAttribute('data-state', 'video');
       showActivePanel();
-      const mainYtIframe = document.getElementById('mainYtIframe');
-      if (mainYtIframe) {
-        mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-      }
+      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
     }
   });
 
@@ -958,10 +948,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       currentState = 'video';
       notch.setAttribute('data-state', 'video');
       showActivePanel();
-      const mainYtIframe = document.getElementById('mainYtIframe');
-      if (mainYtIframe) {
-        mainYtIframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-      }
+      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
     }
   });
 
@@ -1464,69 +1451,162 @@ function saveTasks() {
   try { localStorage.setItem('notchTasks', JSON.stringify(tasks)); } catch (e) {}
 }
 
+const newTaskId = () => Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+
+// One checklist row. Apple Notes edits in place — every line is a live text
+// field rather than something you retype in a separate box — so the row owns
+// its own input and writes straight back to the task.
+function buildTaskRow(task) {
+  const row = document.createElement('div');
+  row.className = 'task-row' + (task.done ? ' done' : '');
+  row.dataset.id = task.id;
+
+  const check = document.createElement('button');
+  check.className = 'task-check';
+  check.type = 'button';
+  check.setAttribute('aria-label', task.done ? 'Mark as not done' : 'Mark as done');
+  check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+  check.addEventListener('click', e => {
+    e.stopPropagation();
+    task.done = !task.done;
+    saveTasks();
+    row.classList.toggle('done', task.done);
+    check.setAttribute('aria-label', task.done ? 'Mark as not done' : 'Mark as done');
+    updateTasksCount();
+  });
+
+  const text = document.createElement('input');
+  text.className = 'task-text';
+  text.type = 'text';
+  text.value = task.text;
+  text.maxLength = 120;
+  text.spellcheck = false;
+  text.addEventListener('input', () => { task.text = text.value; saveTasks(); });
+  text.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      // Enter opens a fresh line right below, as it does in Notes.
+      e.preventDefault();
+      const at = tasks.findIndex(t => t.id === task.id);
+      const fresh = { id: newTaskId(), text: '', done: false };
+      tasks.splice(at + 1, 0, fresh);
+      saveTasks();
+      renderTasks();
+      focusTask(fresh.id);
+    } else if (e.key === 'Backspace' && text.value === '') {
+      // Backspace on an empty line deletes it and puts the caret on the one
+      // above, so a row added by mistake takes one keystroke to undo.
+      e.preventDefault();
+      const at = tasks.findIndex(t => t.id === task.id);
+      const prev = tasks[at - 1];
+      tasks.splice(at, 1);
+      saveTasks();
+      renderTasks();
+      if (prev) focusTask(prev.id, true); else focusDraft();
+    } else if (e.key === 'Escape') {
+      closeTasksPanel();
+    }
+  });
+
+  const del = document.createElement('button');
+  del.className = 'task-del';
+  del.type = 'button';
+  del.title = 'Delete';
+  del.setAttribute('aria-label', 'Delete item');
+  del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  del.addEventListener('click', e => {
+    e.stopPropagation();
+    tasks = tasks.filter(t => t.id !== task.id);
+    saveTasks();
+    renderTasks();
+  });
+
+  row.append(check, text, del);
+  return row;
+}
+
+// The always-present empty line at the bottom of a Notes checklist: its hollow
+// circle and caret are what invite the next item, so there's no "add" button.
+function buildDraftRow() {
+  const row = document.createElement('div');
+  row.className = 'task-row task-draft';
+
+  const check = document.createElement('span');
+  check.className = 'task-check';
+
+  const input = document.createElement('input');
+  input.className = 'task-text';
+  input.id = 'taskDraftInput';
+  input.type = 'text';
+  input.placeholder = tasks.length ? '' : 'Add an item';
+  input.maxLength = 120;
+  input.spellcheck = false;
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      const text = input.value.trim();
+      if (!text) return;
+      tasks.push({ id: newTaskId(), text, done: false });
+      input.value = '';
+      saveTasks();
+      renderTasks();
+      focusDraft();   // stay put so items can be typed one after another
+    } else if (e.key === 'Backspace' && input.value === '' && tasks.length) {
+      e.preventDefault();
+      focusTask(tasks[tasks.length - 1].id, true);
+    } else if (e.key === 'Escape') {
+      closeTasksPanel();
+    }
+  });
+
+  row.append(check, input);
+  return row;
+}
+
+function focusTask(id, caretToEnd) {
+  const el = document.querySelector('.task-row[data-id="' + id + '"] .task-text');
+  if (!el) return;
+  el.focus();
+  if (caretToEnd) el.setSelectionRange(el.value.length, el.value.length);
+}
+
+function focusDraft() {
+  const el = document.getElementById('taskDraftInput');
+  if (el) el.focus();
+}
+
+function updateTasksCount() {
+  const count = document.getElementById('tasksCount');
+  if (!count) return;
+  const left = tasks.filter(t => !t.done).length;
+  count.textContent = left === 1 ? '1 left' : left + ' left';
+}
+
 function renderTasks() {
   const list = document.getElementById('tasksList');
   const panel = document.getElementById('panelTasks');
-  const count = document.getElementById('tasksCount');
   if (!list || !panel) return;
 
   list.innerHTML = '';
-  tasks.forEach(task => {
-    const row = document.createElement('div');
-    row.className = 'task-row' + (task.done ? ' done' : '');
-
-    const check = document.createElement('div');
-    check.className = 'task-check';
-    check.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-    check.addEventListener('click', e => {
-      e.stopPropagation();
-      task.done = !task.done;
-      saveTasks();
-      renderTasks();
-    });
-
-    const text = document.createElement('div');
-    text.className = 'task-text';
-    text.textContent = task.text;
-    text.title = task.text;
-
-    const del = document.createElement('div');
-    del.className = 'task-del';
-    del.title = 'Delete task';
-    del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-    del.addEventListener('click', e => {
-      e.stopPropagation();
-      tasks = tasks.filter(t => t.id !== task.id);
-      saveTasks();
-      renderTasks();
-    });
-
-    row.appendChild(check);
-    row.appendChild(text);
-    row.appendChild(del);
-    list.appendChild(row);
-  });
+  tasks.forEach(task => list.appendChild(buildTaskRow(task)));
+  list.appendChild(buildDraftRow());
 
   panel.classList.toggle('is-empty', tasks.length === 0);
-  if (count) {
-    const left = tasks.filter(t => !t.done).length;
-    count.textContent = left === 1 ? '1 left' : left + ' left';
-  }
+  updateTasksCount();
   layoutTasksPanel();
 }
 
-// The notch hugs its content: header + search bar, plus one row per task.
-// Beyond TASKS_MAX_ROWS the list scrolls instead of growing further.
-const TASKS_BASE_H = 106;   // padding + header + input row
-const TASKS_ROW_H = 32;
-const TASKS_ROW_GAP = 4;
-const TASKS_MAX_ROWS = 5;
+// The notch hugs its content: header, plus one row per item and the trailing
+// empty line. Beyond TASKS_MAX_ROWS the list scrolls instead of growing.
+const TASKS_BASE_H = 74;    // panel padding + header
+const TASKS_ROW_H = 30;
+const TASKS_ROW_GAP = 2;
+const TASKS_MAX_ROWS = 6;   // includes the draft row
 
 function layoutTasksPanel() {
   if (currentState !== 'tasks') return;
-  const rows = Math.min(tasks.length, TASKS_MAX_ROWS);
-  const listH = rows > 0 ? rows * TASKS_ROW_H + (rows - 1) * TASKS_ROW_GAP : 0;
-  notch.style.height = (TASKS_BASE_H + listH) + 'px';
+  const rows = Math.min(tasks.length + 1, TASKS_MAX_ROWS);
+  notch.style.height = (TASKS_BASE_H + rows * TASKS_ROW_H + (rows - 1) * TASKS_ROW_GAP) + 'px';
 }
 
 // Return to the expanded dashboard rather than shrinking the notch away —
@@ -1541,33 +1621,16 @@ function goHomeView() {
   showActivePanel();
 }
 
-function addTaskFromInput() {
-  const input = document.getElementById('taskInput');
-  if (!input) return;
-  const text = input.value.trim();
-  if (!text) return;
-  tasks.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), text, done: false });
-  input.value = '';
-  saveTasks();
-  renderTasks();
-  const list = document.getElementById('tasksList');
-  if (list) list.scrollTop = list.scrollHeight;
-}
-
 function setupTasksPanel() {
-  const addBtn = document.getElementById('taskAddBtn');
-  const input = document.getElementById('taskInput');
   const closeBtn = document.getElementById('tasksCloseBtn');
-
-  if (addBtn) addBtn.addEventListener('click', e => { e.stopPropagation(); addTaskFromInput(); });
-  if (input) {
-    input.addEventListener('keydown', e => {
-      e.stopPropagation();
-      if (e.key === 'Enter') addTaskFromInput();
-      else if (e.key === 'Escape') closeTasksPanel();
-    });
-  }
   if (closeBtn) closeBtn.addEventListener('click', e => { e.stopPropagation(); closeTasksPanel(); });
+
+  // Clicking empty space below the list drops the caret on the next line, the
+  // way tapping under a note's last row does.
+  const list = document.getElementById('tasksList');
+  if (list) {
+    list.addEventListener('click', e => { if (e.target === list) focusDraft(); });
+  }
 
   renderTasks();
 }
@@ -1578,15 +1641,16 @@ function openTasksPanel() {
   notch.setAttribute('data-state', 'tasks');
   renderTasks();
   if (!isExpanded) expand(); else showActivePanel();
-  setTimeout(() => {
-    const input = document.getElementById('taskInput');
-    if (input) input.focus();
-  }, 260);
+  setTimeout(focusDraft, 260);
 }
 
 function closeTasksPanel() {
-  const input = document.getElementById('taskInput');
-  if (input) { input.value = ''; input.blur(); }
+  const draft = document.getElementById('taskDraftInput');
+  if (draft) { draft.value = ''; draft.blur(); }
+  // Lines left blank (an Enter that was never typed into) shouldn't persist.
+  const before = tasks.length;
+  tasks = tasks.filter(t => t.text.trim());
+  if (tasks.length !== before) saveTasks();
   goHomeView();
 }
 
@@ -2489,15 +2553,28 @@ let unreadIndex = 0;
 let activeReplyContext = null;
 let pendingAttachment = null; // file path staged by the + button, sent with the reply
 
+// Name + avatar for whoever the notch is currently showing. Google Messages
+// only supplies an avatar URL for some contacts; without a fallback the panel
+// keeps the previous sender's photo and labels the message with the wrong face.
+function setMsgSender(sender, avatar) {
+  const name = sender || 'Unknown Sender';
+  document.querySelectorAll('.msg-name').forEach(el => el.textContent = name);
+  document.querySelectorAll('.msg-avatar').forEach(el => {
+    if (avatar) el.setAttribute('src', avatar);
+    else el.removeAttribute('src');
+  });
+  const initials = name
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(w => w[0].toUpperCase()).join('') || '?';
+  document.querySelectorAll('.msg-avatar-initials').forEach(el => el.textContent = initials);
+}
+
 function openUnreadForReply(item) {
   activeReplyContext = { sender: item.sender || null, app: item.app || null };
 
-  const nameEl = document.querySelectorAll('.msg-name');
   const textExpEl = document.querySelector('.msg-exp-text');
-  const avatarEls = document.querySelectorAll('.msg-avatar');
   const appIconSmall = document.querySelector('.msg-app-icon-small');
-  if (avatarEls && item.avatar) avatarEls.forEach(el => el.src = item.avatar);
-  if (nameEl) nameEl.forEach(el => el.textContent = item.sender || 'Unknown Sender');
+  setMsgSender(item.sender, item.avatar);
   if (textExpEl) textExpEl.textContent = item.text || '';
   if (appIconSmall) appIconSmall.style.background = item.app === 'gchat' ? '#00897B' : '#34c759';
 
@@ -2725,7 +2802,7 @@ async function fetchRecording() {
         if (login) login.style.display = 'none';
         updateUnreadBadge(count);
       }
-    });
+    }, { passive: false });
   }
 });
 
@@ -2969,57 +3046,362 @@ if (searchGoogleIcon) {
 
 // Duplicate mic listener removed to avoid overriding custom logic
 
-async function fetchWeather() {
+
+/* --- PiP YouTube player ------------------------------------------------
+   The embed is driven through the IFrame API's postMessage protocol rather
+   than a wrapper library: the panel needs real position and duration to draw
+   the scrub bar, and those only come back from the player itself. Commands go
+   out as {event:'command'}; the player answers with 'infoDelivery' payloads
+   carrying currentTime, duration and playerState. */
+let pipState = { time: 0, duration: 0, playing: false, muted: false, loop: false, videoId: null };
+let pipPoll = null;
+
+function pipCmd(func, args) {
+  const frame = document.getElementById('mainYtIframe');
+  if (!frame || !frame.contentWindow || !frame.src) return;
+  frame.contentWindow.postMessage(JSON.stringify({
+    event: 'command', func: func, args: args || []
+  }), '*');
+}
+
+function pipFmt(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60), r = Math.floor(sec % 60);
+  return m + ':' + String(r).padStart(2, '0');
+}
+
+function pipPaint() {
+  const t = document.getElementById('pipTime');
+  const fill = document.getElementById('pipFill');
+  const dot = document.getElementById('pipDot');
+  const icon = document.getElementById('pipPlayIcon');
+  if (t) t.textContent = pipFmt(pipState.time) + ' / ' + pipFmt(pipState.duration);
+  const pct = pipState.duration > 0
+    ? Math.max(0, Math.min(100, (pipState.time / pipState.duration) * 100)) : 0;
+  if (fill) fill.style.width = pct + '%';
+  if (dot) dot.style.left = pct + '%';
+  // Pause bars while playing, play triangle while stopped.
+  if (icon) icon.innerHTML = pipState.playing
+    ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>'
+    : '<path d="M8 5v14l11-7z"/>';
+}
+
+// The player only reports back to listeners that have announced themselves.
+function pipSubscribe() {
+  const frame = document.getElementById('mainYtIframe');
+  if (!frame || !frame.contentWindow || !frame.src) return;
+  frame.contentWindow.postMessage(JSON.stringify({
+    event: 'listening', id: 1, channel: 'widget'
+  }), '*');
+}
+
+function pipIsYouTubeOrigin(origin) {
   try {
-    const locRes = await fetch('http://ip-api.com/json/');
-    const locData = await locRes.json();
-    const city = locData.city;
-    document.getElementById('weatherCity').textContent = city;
-    
-    const weatherData = await window.notchAPI.fetchWeather(city);
-    if (!weatherData) throw new Error('No weather data');
-    
-    const temp = weatherData.current.temperature;
-    const phrase = weatherData.current.skytext.toLowerCase();
-    
-    document.getElementById('weatherTemp').innerHTML = temp + '<span>°F</span>';
-    
-    const dashWeather = document.getElementById('dashWeather');
-    dashWeather.className = 'dash-weather';
-    
-    let icon = '☀️';
-    if (phrase.includes('sunny') || phrase.includes('clear')) {
-      dashWeather.classList.add('weather-sunny');
-      icon = '☀️';
-    } else if (phrase.includes('rain') || phrase.includes('shower') || phrase.includes('storm')) {
-      dashWeather.classList.add('weather-rainy');
-      icon = '🌧️';
-    } else if (phrase.includes('snow') || phrase.includes('ice')) {
-      dashWeather.classList.add('weather-snowy');
-      icon = '❄️';
-    } else {
-      dashWeather.classList.add('weather-cloudy');
-      icon = phrase.includes('partly') ? '⛅' : '☁️';
+    const host = new URL(origin).hostname.replace(/^www\./, '');
+    return host === 'youtube.com' || host === 'youtube-nocookie.com';
+  } catch (e) { return false; }
+}
+
+window.addEventListener('message', (e) => {
+  if (!pipIsYouTubeOrigin(e.origin)) return;
+  let data;
+  try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+  if (!data || data.event !== 'infoDelivery' || !data.info) return;
+  const i = data.info;
+  if (typeof i.currentTime === 'number') pipState.time = i.currentTime;
+  if (typeof i.duration === 'number' && i.duration > 0) pipState.duration = i.duration;
+  if (typeof i.muted === 'boolean') pipState.muted = i.muted;
+  if (typeof i.playerState === 'number') {
+    pipState.playing = i.playerState === 1;
+    // 0 = ended; the loop toggle in the footer restarts it.
+    if (i.playerState === 0 && pipState.loop) pipCmd('seekTo', [0, true]);
+  }
+  pipPaint();
+});
+
+// Open a video in the PiP panel. Everything that used to assign iframe.src
+// directly now routes through here, so the chrome is always filled in.
+function openPipVideo(videoId, title, channel, art) {
+  const frame = document.getElementById('mainYtIframe');
+  if (!frame || !videoId) return;
+  pipState = { time: 0, duration: 0, playing: true, muted: false, loop: pipState.loop, videoId: videoId };
+
+  const t = document.getElementById('pipTitle');
+  const c = document.getElementById('pipChannel');
+  const a = document.getElementById('pipAvatar');
+  if (t) t.textContent = title || 'YouTube';
+  if (c) c.textContent = channel || 'YouTube';
+  if (a) {
+    if (art) { a.style.backgroundImage = 'url("' + art + '")'; a.textContent = ''; }
+    else { a.style.backgroundImage = ''; a.textContent = (channel || 'Y').trim().charAt(0).toUpperCase(); }
+  }
+  pipPaint();
+
+  frame.src = 'https://www.youtube-nocookie.com/embed/' + videoId +
+    '?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1';
+  frame.onload = () => { pipSubscribe(); setTimeout(pipSubscribe, 600); };
+
+  clearInterval(pipPoll);
+  // The player pushes updates while playing but goes quiet when paused or
+  // buffering; a slow poll keeps the bar honest without spamming the frame.
+  pipPoll = setInterval(pipSubscribe, 1000);
+}
+
+function closePipVideo() {
+  const frame = document.getElementById('mainYtIframe');
+  if (frame) { frame.onload = null; frame.src = ''; }
+  clearInterval(pipPoll);
+  pipPoll = null;
+  pipState.playing = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const on = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', (ev) => { ev.stopPropagation(); fn(el, ev); });
+  };
+  on('pipPlayBtn', () => {
+    pipCmd(pipState.playing ? 'pauseVideo' : 'playVideo');
+    pipState.playing = !pipState.playing;
+    pipPaint();
+  });
+  on('pipPrevBtn', () => pipCmd('seekTo', [Math.max(0, pipState.time - 10), true]));
+  on('pipNextBtn', () => pipCmd('seekTo', [pipState.time + 10, true]));
+  on('pipMuteBtn', (el) => {
+    pipState.muted = !pipState.muted;
+    pipCmd(pipState.muted ? 'mute' : 'unMute');
+    el.classList.toggle('active', pipState.muted);
+  });
+  on('pipLoopBtn', (el) => {
+    pipState.loop = !pipState.loop;
+    el.classList.toggle('active', pipState.loop);
+  });
+  on('pipOpenBtn', () => {
+    if (pipState.videoId && window.notchAPI) {
+      window.notchAPI.openUrl('https://www.youtube.com/watch?v=' + pipState.videoId);
     }
-    
-    document.getElementById('weatherIcon').textContent = icon;
-    
-  } catch(e) {
+  });
+
+  // Scrub: map the click position along the track to a time.
+  const track = document.getElementById('pipTrack');
+  if (track) {
+    track.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!pipState.duration) return;
+      const r = track.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      pipState.time = ratio * pipState.duration;
+      pipCmd('seekTo', [pipState.time, true]);
+      pipPaint();
+    });
+  }
+});
+
+// ─── Weather glyphs ───
+// Flat two-tone icons in the style of the reference sheet: a warm yellow sun,
+// neutral grey cloud, blue precipitation. Emoji were the wrong look and, worse,
+// render differently per platform. Drawn on a 24x24 grid so they stay legible
+// down to the 14px used in the hourly strip.
+const WX_SUN = '#FFD23F', WX_CLOUD = '#D2D6DB', WX_CLOUD_DARK = '#AEB4BC',
+      WX_MOON = '#F1F4F8', WX_RAIN = '#4FC0F0', WX_SNOW = '#EAF0F6';
+
+const CLOUD_PATH = 'M7.2 19h10a3.8 3.8 0 0 0 .3-7.58 5.4 5.4 0 0 0-10.35-.72A3.9 3.9 0 0 0 7.2 19z';
+const SMALL_CLOUD = 'M9.4 18.6h7.9a3.1 3.1 0 0 0 .25-6.2 4.4 4.4 0 0 0-8.45-.6 3.2 3.2 0 0 0 .3 6.8z';
+
+const WX_ICONS = {
+  sun: `<circle cx="12" cy="12" r="5" fill="${WX_SUN}"/>
+    <g stroke="${WX_SUN}" stroke-width="2" stroke-linecap="round">
+      <path d="M12 1.6v2.6M12 19.8v2.6M1.6 12h2.6M19.8 12h2.6M4.4 4.4l1.9 1.9M17.7 17.7l1.9 1.9M19.6 4.4l-1.9 1.9M6.3 17.7l-1.9 1.9"/>
+    </g>`,
+
+  sunCloud: `<circle cx="9" cy="8.2" r="3.5" fill="${WX_SUN}"/>
+    <g stroke="${WX_SUN}" stroke-width="1.7" stroke-linecap="round">
+      <path d="M9 1.9v1.7M2.7 8.2h1.7M4.5 3.7l1.2 1.2M13.5 3.7l-1.2 1.2M4.5 12.7l1.2-1.2"/>
+    </g>
+    <path d="${SMALL_CLOUD}" fill="${WX_CLOUD}"/>`,
+
+  cloud: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}"/>`,
+
+  overcast: `<path d="M5.6 15.2a3.4 3.4 0 0 1 .9-6.4 4.9 4.9 0 0 1 9.2-.7 3.4 3.4 0 0 1 .3 6.6" fill="${WX_CLOUD_DARK}" opacity="0.75"/>
+    <path d="${CLOUD_PATH}" fill="${WX_CLOUD_DARK}"/>`,
+
+  moon: `<path d="M20.5 15.2A8.6 8.6 0 0 1 9.3 4a8.6 8.6 0 1 0 11.2 11.2z" fill="${WX_MOON}"/>`,
+
+  moonStars: `<path d="M20.9 14.6A7.9 7.9 0 0 1 10.4 4.1a7.9 7.9 0 1 0 10.5 10.5z" fill="${WX_MOON}"/>
+    <path d="M18.4 3.2l.62 1.68 1.68.62-1.68.62-.62 1.68-.62-1.68-1.68-.62 1.68-.62z" fill="${WX_MOON}"/>
+    <path d="M21.7 8.4l.38 1.03 1.03.38-1.03.38-.38 1.03-.38-1.03-1.03-.38 1.03-.38z" fill="${WX_MOON}"/>`,
+
+  moonCloud: `<path d="M16.6 3.4A6.2 6.2 0 0 1 8.4 11.6 6.2 6.2 0 1 0 16.6 3.4z" fill="${WX_MOON}"/>
+    <path d="${SMALL_CLOUD}" fill="${WX_CLOUD}"/>`,
+
+  rain: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}" transform="translate(0,-2.2)"/>
+    <g stroke="${WX_RAIN}" stroke-width="1.9" stroke-linecap="round">
+      <path d="M8.7 18.4l-1.1 2.9M12.6 18.4l-1.1 2.9M16.5 18.4l-1.1 2.9"/>
+    </g>`,
+
+  drizzle: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}" transform="translate(0,-2.2)"/>
+    <g stroke="${WX_RAIN}" stroke-width="1.8" stroke-linecap="round">
+      <path d="M9.4 18.7l-.7 1.8M15.1 18.7l-.7 1.8"/>
+    </g>`,
+
+  thunder: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD_DARK}" transform="translate(0,-2)"/>
+    <path d="M13.4 15.2l-4.5 5.3h3l-1 4 4.7-5.6h-3.1l.9-3.7z" fill="${WX_SUN}"/>`,
+
+  snow: `<g stroke="${WX_SNOW}" stroke-width="1.9" stroke-linecap="round">
+      <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/>
+      <path d="M12 6.6l-2.2-2.2M12 6.6l2.2-2.2M12 17.4l-2.2 2.2M12 17.4l2.2 2.2"/>
+      <path d="M7.3 9.3l-3-.5M7.3 9.3l-.8-2.9M16.7 14.7l3 .5M16.7 14.7l.8 2.9"/>
+      <path d="M7.3 14.7l-3 .5M7.3 14.7l-.8 2.9M16.7 9.3l3-.5M16.7 9.3l.8-2.9"/>
+    </g>`,
+
+  snowCloud: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}" transform="translate(0,-2.4)"/>
+    <g fill="${WX_SNOW}">
+      <circle cx="8.8" cy="19.6" r="1.15"/><circle cx="12.6" cy="20.9" r="1.15"/><circle cx="16.2" cy="19.6" r="1.15"/>
+    </g>`,
+
+  sleet: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}" transform="translate(0,-2.4)"/>
+    <circle cx="9.2" cy="19.9" r="1.15" fill="${WX_SNOW}"/>
+    <circle cx="15.8" cy="19.9" r="1.15" fill="${WX_SNOW}"/>
+    <path d="M12.5 18.6l-1 2.9" stroke="${WX_RAIN}" stroke-width="1.8" stroke-linecap="round"/>`,
+
+  fog: `<path d="${CLOUD_PATH}" fill="${WX_CLOUD}" transform="translate(0,-3)"/>
+    <g stroke="${WX_CLOUD_DARK}" stroke-width="1.9" stroke-linecap="round">
+      <path d="M6.4 18.2h11.2M8.2 21.2h7.6"/>
+    </g>`,
+};
+
+// isDay picks the night variant where one exists — a clear night is a moon.
+function wxIcon(name, size) {
+  const body = WX_ICONS[name] || WX_ICONS.cloud;
+  return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size +
+         '" fill="none" aria-hidden="true">' + body + '</svg>';
+}
+
+// WMO weather codes, as returned by Open-Meteo. Each maps to the label Apple
+// shows and a day/night glyph pair — a clear night is a moon, not a sun.
+const WMO = {
+  0:  ['Clear',            'sun', 'moonStars', 'sunny'],
+  1:  ['Mostly Clear',     'sunCloud', 'moonCloud', 'sunny'],
+  2:  ['Partly Cloudy',    'sunCloud',  'moonCloud', 'cloudy'],
+  3:  ['Cloudy',           'cloud', 'cloud', 'cloudy'],
+  45: ['Fog',              'fog', 'fog', 'cloudy'],
+  48: ['Freezing Fog',     'fog', 'fog', 'cloudy'],
+  51: ['Light Drizzle',    'drizzle', 'drizzle', 'rainy'],
+  53: ['Drizzle',          'drizzle', 'drizzle', 'rainy'],
+  55: ['Heavy Drizzle',    'rain', 'rain', 'rainy'],
+  56: ['Freezing Drizzle', 'sleet', 'sleet', 'rainy'],
+  57: ['Freezing Drizzle', 'sleet', 'sleet', 'rainy'],
+  61: ['Light Rain',       'drizzle', 'drizzle', 'rainy'],
+  63: ['Rain',             'rain', 'rain', 'rainy'],
+  65: ['Heavy Rain',       'rain', 'rain', 'rainy'],
+  66: ['Freezing Rain',    'sleet', 'sleet', 'rainy'],
+  67: ['Freezing Rain',    'sleet', 'sleet', 'rainy'],
+  71: ['Light Snow',       'snowCloud', 'snowCloud', 'snowy'],
+  73: ['Snow',             'snow', 'snow', 'snowy'],
+  75: ['Heavy Snow',       'snow', 'snow', 'snowy'],
+  77: ['Snow Grains',      'snowCloud', 'snowCloud', 'snowy'],
+  80: ['Showers',          'drizzle', 'drizzle', 'rainy'],
+  81: ['Showers',          'rain', 'rain', 'rainy'],
+  82: ['Heavy Showers',    'thunder', 'thunder', 'rainy'],
+  85: ['Snow Showers',     'snowCloud', 'snowCloud', 'snowy'],
+  86: ['Snow Showers',     'snow', 'snow', 'snowy'],
+  95: ['Thunderstorms',    'thunder', 'thunder', 'rainy'],
+  96: ['Thunderstorms',    'thunder', 'thunder', 'rainy'],
+  99: ['Thunderstorms',    'thunder', 'thunder', 'rainy'],
+};
+const wmo = code => WMO[code] || ['—', 'cloud', 'cloud', 'cloudy'];
+
+const WX_HOURS = 6;
+let weatherPlace = null;
+
+function hourLabel(date) {
+  const h = date.getHours();
+  const suffix = h < 12 ? 'AM' : 'PM';
+  return ((h % 12) || 12) + ' ' + suffix;
+}
+
+async function fetchWeather() {
+  const el = id => document.getElementById(id);
+  try {
+    // Cache the location: the IP lookup is rate-limited and the city doesn't
+    // change between the hourly refreshes.
+    if (!weatherPlace) {
+      const loc = await (await fetch('http://ip-api.com/json/')).json();
+      if (!loc || loc.lat == null) throw new Error('No location');
+      weatherPlace = { city: loc.city || 'Here', lat: loc.lat, lon: loc.lon };
+    }
+    const { city, lat, lon } = weatherPlace;
+
+    // Open-Meteo needs no API key and, unlike the previous source, returns an
+    // hourly series and the day's high/low — both of which the widget shows.
+    const url = 'https://api.open-meteo.com/v1/forecast'
+      + '?latitude=' + lat + '&longitude=' + lon
+      + '&current=temperature_2m,weather_code,is_day'
+      + '&hourly=temperature_2m,weather_code'
+      + '&daily=temperature_2m_max,temperature_2m_min'
+      + '&temperature_unit=fahrenheit&timezone=auto&forecast_days=2';
+    const wx = await (await fetch(url)).json();
+    if (!wx || !wx.current) throw new Error('No weather data');
+
+    const isDay = wx.current.is_day !== 0;
+    const [label, dayGlyph, nightGlyph, sky] = wmo(wx.current.weather_code);
+
+    el('weatherCity').textContent = city;
+    el('weatherTemp').textContent = Math.round(wx.current.temperature_2m) + '°';
+    el('weatherIcon').innerHTML = wxIcon(isDay ? dayGlyph : nightGlyph, 20);
+    el('weatherCond').textContent = label;
+
+    if (wx.daily) {
+      el('weatherHL').textContent = 'H:' + Math.round(wx.daily.temperature_2m_max[0]) + '°'
+        + '  L:' + Math.round(wx.daily.temperature_2m_min[0]) + '°';
+    }
+
+    const card = el('dashWeather');
+    card.className = 'dash-weather weather-' + (isDay ? sky : (sky === 'sunny' ? 'night' : sky));
+
+    // Hourly strip, starting from the next hour.
+    const strip = el('weatherHourly');
+    strip.innerHTML = '';
+    if (wx.hourly && wx.hourly.time) {
+      const now = Date.now();
+      let start = wx.hourly.time.findIndex(t => new Date(t).getTime() > now);
+      if (start < 0) start = 0;
+      for (let i = start; i < start + WX_HOURS && i < wx.hourly.time.length; i++) {
+        const when = new Date(wx.hourly.time[i]);
+        const hr = when.getHours();
+        const [, dg, ng] = wmo(wx.hourly.weather_code[i]);
+        const col = document.createElement('div');
+        col.className = 'wx-hour';
+        col.innerHTML =
+          '<span class="wx-hour-time"></span>' +
+          '<span class="wx-hour-glyph"></span>' +
+          '<span class="wx-hour-temp"></span>';
+        col.children[0].textContent = hourLabel(when);
+        col.children[1].innerHTML = wxIcon((hr >= 6 && hr < 20) ? dg : ng, 16);
+        col.children[2].textContent = Math.round(wx.hourly.temperature_2m[i]) + '°';
+        strip.appendChild(col);
+      }
+    }
+  } catch (e) {
     console.error('Weather error:', e);
-    document.getElementById('weatherCity').textContent = 'Location unavailable';
+    if (el('weatherCity')) el('weatherCity').textContent = 'Unavailable';
+    if (el('weatherCond')) el('weatherCond').textContent = 'No connection';
   }
 }
+
 document.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
-  const weatherBtn = document.getElementById('weatherBtn');
-  if (weatherBtn) {
-    weatherBtn.addEventListener('click', () => {
-      window.notchAPI.openUrl('https://weather.com/');
+  // The whole card opens the forecast now that the button is gone.
+  const card = document.getElementById('dashWeather');
+  if (card) {
+    card.addEventListener('click', () => {
+      const place = weatherPlace ? encodeURIComponent(weatherPlace.city) : '';
+      window.notchAPI.openUrl('https://weather.com/weather/today/l/' + place);
       collapse();
     });
   }
 });
-setInterval(fetchWeather, 3600000);
+setInterval(fetchWeather, 900000);
 
 /* ─── Widgets: multi-select carousel + Stocks (market / watchlist) ─── */
 const ALL_WIDGETS = ['weather', 'stocks'];
@@ -3055,6 +3437,44 @@ let stocksInterval = null;
 //    looked like the same dramatic rollercoaster. The previous close is now
 //    kept inside the domain (without drawing it), which is how a 1D chart is
 //    scaled: a flat day looks flat and a big move looks big.
+// The card is ~113px wide but a session carries ~390 one-minute bars, so more
+// than three points land in every pixel column. Drawn as-is they overplot into
+// a smeared band that reads nothing like Google Finance's line. Reduce to one
+// column per pixel, keeping each column's high AND low in the order they
+// happened — that preserves the true envelope (a spike stays a spike) while
+// removing the overdraw.
+// Roughly the on-screen width of one stock card's sparkline, in device
+// pixels: three cards across a 368px widget. Bucketing to this many columns
+// is what keeps the drawn line at one point per pixel.
+const SPARK_PX_W = 113;
+
+function downsampleSpark(pts, buckets, t0, span) {
+  if (pts.length <= buckets) return pts;
+  const groups = new Map();
+  for (const p of pts) {
+    const b = Math.min(buckets - 1, Math.max(0, Math.floor(((p.t - t0) / span) * buckets)));
+    const g = groups.get(b);
+    if (!g) groups.set(b, { lo: p, hi: p });
+    else {
+      if (p.c < g.lo.c) g.lo = p;
+      if (p.c > g.hi.c) g.hi = p;
+    }
+  }
+  const out = [];
+  Array.from(groups.keys()).sort((a, b) => a - b).forEach(b => {
+    const g = groups.get(b);
+    const pair = g.lo.t <= g.hi.t ? [g.lo, g.hi] : [g.hi, g.lo];
+    for (const p of pair) {
+      if (!out.length || out[out.length - 1].t !== p.t) out.push(p);
+    }
+  });
+  // The final bar is the live price the card displays; it must end the line
+  // even if its column's extremes fell elsewhere.
+  const last = pts[pts.length - 1];
+  if (out.length && out[out.length - 1].t !== last.t) out.push(last);
+  return out;
+}
+
 function sparkPoints(pts, prevClose, sessionStart, sessionEnd, w = 100, h = 20) {
   if (!pts || pts.length < 2) return null;
   const vals = pts.map(p => p.c);
@@ -3067,9 +3487,10 @@ function sparkPoints(pts, prevClose, sessionStart, sessionEnd, w = 100, h = 20) 
   const t1 = (sessionEnd != null) ? sessionEnd : pts[pts.length - 1].t;
   const span = (t1 - t0) || 1;
 
+  const drawn = downsampleSpark(pts, SPARK_PX_W, t0, span);
   const yOf = v => (h - pad) - ((v - min) / range) * (h - pad * 2);
   const xOf = t => Math.max(0, Math.min(w, ((t - t0) / span) * w));
-  const xy = pts.map(p => [xOf(p.t), yOf(p.c)]);
+  const xy = drawn.map(p => [xOf(p.t), yOf(p.c)]);
   const line = xy.map(p => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
   const last = xy[xy.length - 1];
   // Percentages, so the "now" marker can be a real circle: the SVG is drawn
@@ -3132,7 +3553,7 @@ async function fetchStocks() {
                  <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
                </linearGradient></defs>
                <polygon points="${sp.area}" fill="url(#${fillId})"/>
-               <polyline points="${sp.line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+               <polyline points="${sp.line}" fill="none" stroke="${color}" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
              </svg>
              <span class="stock-dot" style="left:${sp.dotLeft.toFixed(2)}%;top:${sp.dotTop.toFixed(2)}%;background:${color}"></span>
            </div>`
@@ -3214,27 +3635,133 @@ function renderWidgets() {
   if (stocksEl) stocksEl.style.display = active === 'stocks' ? 'flex' : 'none';
 
   const multi = selectedWidgets.length > 1;
-  const nav = document.getElementById('widgetNav');
-  if (nav) nav.style.display = multi ? 'flex' : 'none';
+  ['widgetNav', 'widgetNavPrev'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = multi ? 'flex' : 'none';
+  });
 
   document.querySelectorAll('#widgetPicker .wp-item').forEach(it => {
     it.classList.toggle('selected', selectedWidgets.includes(it.dataset.widget));
   });
 
-  clearInterval(stocksInterval);
-  if (active === 'stocks') {
-    syncStocksModeUI();
-    fetchStocks();
-    // Live refresh from Yahoo Finance — prices AND sparkline shapes
-    stocksInterval = setInterval(fetchStocks, 15000);
+  // Only re-arm the feed when the visible widget actually changed. This used to
+  // run on every renderWidgets() call, so a burst of swipes fired a Yahoo
+  // request and rebuilt three sparkline cards per swipe, on top of an animation
+  // that is already compositing on the CPU.
+  if (active !== lastWidgetRendered) {
+    lastWidgetRendered = active;
+    clearInterval(stocksInterval);
+    if (active === 'stocks') {
+      syncStocksModeUI();
+      fetchStocks();
+      // Live refresh from Yahoo Finance — prices AND sparkline shapes
+      stocksInterval = setInterval(fetchStocks, 15000);
+    }
   }
 }
 
+// The drum takes .52s to swing a face away; the next one starts its own swing
+// part-way through, so you read it as one continuous turn rather than a
+// cross-fade of two cards sitting on top of each other.
+// Curve out, THEN place in. The stagger is nearly the full swing, so the
+// outgoing card has almost finished rotating away before the next one starts —
+// the two barely overlap, which is both the look asked for and cheaper to
+// composite, since only one card is animating at a time for most of the turn.
+const WGT_SWING_MS = 340;
+const WGT_STAGGER_MS = 250;
+let widgetTurning = false;
+let wgtTimers = [];
+let lastWidgetRendered = null;
+
+function widgetEl(name) {
+  return document.getElementById(name === 'weather' ? 'dashWeather' : 'dashStocks');
+}
+
+// Turn the carousel one step. dir > 0 advances (current exits left, next enters
+// from the right); dir < 0 mirrors that.
 function nextWidget(dir) {
   if (selectedWidgets.length < 2) return;
+  // Ignore anything that arrives mid-turn. Queueing them let a burst of swipes
+  // stack turns faster than they could run; this check sits BEFORE widgetIndex
+  // moves, so a dropped swipe cannot desync the index from what is on screen.
+  if (widgetTurning) return;
+
   const n = selectedWidgets.length;
-  widgetIndex = (widgetIndex + (dir || 1) + n) % n;
-  renderWidgets();
+  const step = (dir || 1) > 0 ? 1 : -1;
+  const outgoing = widgetEl(selectedWidgets[widgetIndex]);
+  widgetIndex = (widgetIndex + step + n) % n;
+  const incoming = widgetEl(selectedWidgets[widgetIndex]);
+
+  if (!outgoing || !incoming || outgoing === incoming) {
+    renderWidgets();
+    return;
+  }
+  widgetTurning = true;
+
+  // Any timers still pending from an earlier turn would fire into this one and
+  // hide the wrong card.
+  wgtTimers.forEach(clearTimeout);
+  wgtTimers = [];
+
+  const outTo = step > 0 ? 'wgt-off-left' : 'wgt-off-right';
+  const inFrom = step > 0 ? 'wgt-off-right' : 'wgt-off-left';
+
+  // 1. Lift the outgoing card out of the flex flow, pinned over the slot it
+  //    already occupies. Both cards are visible during the turn, and while they
+  //    are both in flow the column stacks them and the layout jumps.
+  const col = document.getElementById('dashWidgetsCol');
+  const colRect = col.getBoundingClientRect();
+  const outRect = outgoing.getBoundingClientRect();
+  outgoing.style.position = 'absolute';
+  outgoing.style.left = (outRect.left - colRect.left) + 'px';
+  outgoing.style.top = (outRect.top - colRect.top) + 'px';
+  outgoing.style.width = outRect.width + 'px';
+  outgoing.style.height = outRect.height + 'px';
+  outgoing.style.zIndex = '2';
+
+  // 2. Park the next face off-stage and let it paint BEFORE anything moves.
+  //    It has been display:none until now, so its first layout and paint are
+  //    expensive — a weather card is six SVG columns, a stocks card three
+  //    sparklines. Doing that on the same frame the swing starts is what the
+  //    stutter was: the animation's opening frames were competing with a full
+  //    paint of a card that had never been rendered.
+  incoming.classList.remove('wgt-settled');
+  incoming.classList.add('wgt-turning', 'wgt-instant', inFrom);
+  incoming.style.display = 'flex';
+  void incoming.offsetWidth;                 // force layout now, not mid-swing
+
+  requestAnimationFrame(() => {
+    // The parked card has been painted by this point, so the swing below only
+    // has to re-composite two existing layers.
+    outgoing.classList.remove('wgt-settled');
+    outgoing.classList.add('wgt-turning', 'wgt-leaving');
+    requestAnimationFrame(() => outgoing.classList.add(outTo));
+
+    // 3. Release the arriving card once the outgoing one has nearly finished,
+    //    so for most of the turn only a single card is animating.
+    wgtTimers.push(setTimeout(() => {
+      incoming.classList.remove('wgt-instant');
+      requestAnimationFrame(() => {
+        incoming.classList.remove(inFrom);
+        incoming.classList.add('wgt-settled');
+      });
+    }, WGT_STAGGER_MS));
+
+    wgtTimers.push(setTimeout(() => {
+      outgoing.style.display = 'none';
+      outgoing.classList.remove(outTo, 'wgt-leaving', 'wgt-turning');
+      // Hand the card back to the flex flow for its next turn.
+      outgoing.style.position = outgoing.style.left = outgoing.style.top = '';
+      outgoing.style.width = outgoing.style.height = outgoing.style.zIndex = '';
+      widgetTurning = false;
+      // Drop the layer hints a beat later so a static dashboard isn't holding
+      // promoted layers, and keep the data resync off the final frame.
+      setTimeout(() => {
+        incoming.classList.remove('wgt-turning');
+        renderWidgets();
+      }, 50);
+    }, WGT_SWING_MS + WGT_STAGGER_MS));
+  });
 }
 
 function toggleWidget(w) {
@@ -3280,6 +3807,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Carousel arrow → advance to the next selected widget
   const nav = document.getElementById('widgetNav');
   if (nav) nav.addEventListener('click', (e) => { e.stopPropagation(); nextWidget(1); });
+  const navPrev = document.getElementById('widgetNavPrev');
+  if (navPrev) navPrev.addEventListener('click', (e) => { e.stopPropagation(); nextWidget(-1); });
 
   // Two-finger (trackpad) horizontal swipe over the widget area also carousels.
   const widgetsCol = document.getElementById('dashWidgetsCol');
@@ -3297,7 +3826,10 @@ document.addEventListener('DOMContentLoaded', () => {
         nextWidget(swipeAccum > 0 ? 1 : -1);
         swipeAccum = 0;
         swipeCooldown = true;
-        setTimeout(() => { swipeCooldown = false; }, 450);
+        // Match the turn length (590ms) — a shorter window let gestures
+        // arrive faster than the carousel could run them, and every one that
+        // landed mid-turn was thrown away anyway.
+        setTimeout(() => { swipeCooldown = false; }, 620);
       }
     }, { passive: false });
   }
@@ -3591,17 +4123,11 @@ if (window.notchAPI && window.notchAPI.onLiveMessage) {
       if (currentState === 'startup') return;
 
       // Update DOM with real message data
-      const nameEl = document.querySelectorAll('.msg-name');
       const textEl = document.querySelector('.msg-text');
       const textExpEl = document.querySelector('.msg-exp-text');
       const appIcon = document.querySelector('.msg-app-icon');
       const appIconSmall = document.querySelector('.msg-app-icon-small');
-      const avatarEls = document.querySelectorAll('.msg-avatar');
-      if (avatarEls && data.avatar) {
-        avatarEls.forEach(el => el.src = data.avatar);
-      }
-      
-      if (nameEl) nameEl.forEach(el => el.textContent = data.sender || 'Unknown Sender');
+      setMsgSender(data.sender, data.avatar);
       if (textEl) textEl.textContent = data.text || 'New message...';
       if (textExpEl) textExpEl.textContent = data.text || 'New message...';
 

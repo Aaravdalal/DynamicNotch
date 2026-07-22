@@ -379,22 +379,8 @@ function createTray() {
   const icon = nativeImage.createFromDataURL(iconB64);
   tray = new Tray(icon);
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show Notch', click: () => mainWindow && mainWindow.show() },
     { label: 'Login to Google Messages', click: () => showMessagesLogin() },
-    { label: 'Login to Gchat', click: () => hiddenGchat && hiddenGchat.show() },
     { label: 'Reset Messages Login (blank QR fix)', click: () => resetMessagesSession() },
-    { type: 'separator' },
-    { label: 'Open Saved Files', click: () => {
-        const fileTrayPath = path.join(app.getPath('userData'), 'file-tray');
-        if (!fs.existsSync(fileTrayPath)) {
-            fs.mkdirSync(fileTrayPath, { recursive: true });
-        }
-        shell.openPath(fileTrayPath);
-    }},
-    { label: 'Test AirPods', click: () => {
-        safeSend('bluetooth-update', {name: "AirPods", connected: true, battery: 72, type: "earbuds"});
-      }
-    },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]);
