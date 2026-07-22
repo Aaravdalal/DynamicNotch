@@ -300,13 +300,6 @@ function decideState() {
     if (!isExpanded) expand();
   }
 
-  // Sub-notch visibility
-  const sub = document.getElementById('subNotch');
-  if (sub) {
-    const shouldShow = (currentState === 'music' || currentState === 'bt-music') && !isExpanded;
-    if (shouldShow) sub.classList.add('visible');
-    else sub.classList.remove('visible');
-  }
 }
 
 /* ─── Expand / Collapse ─── */
@@ -317,7 +310,7 @@ function expand() {
   notch.classList.add('expanded');
   showActivePanel();
   window.notchAPI.setIgnoreMouse(false);
-  decideState(); // Refresh sub-notch etc.
+  decideState();
 }
 
 function collapse() {
@@ -351,7 +344,7 @@ function collapse() {
     }
   });
   
-  decideState(); // Refresh sub-notch etc.
+  decideState();
 }
 
 /* ─── Camera notch ─── */
@@ -455,12 +448,18 @@ function handleNotchEnter() {
 }
 
 function handleNotchLeave() {
-  const searchInput = document.getElementById('dashSearchInput');
-  if (searchInput && document.activeElement === searchInput) return;
-  // Keep the notch open while the user is actively typing a reply, even if
-  // the mouse drifts off the notch.
-  const replyInput = document.getElementById('msgReplyInput');
-  if (replyInput && document.activeElement === replyInput) return;
+  // Keep the notch open while the user is actively typing, even if the mouse
+  // drifts off. Only half-written text earns that though — an input that was
+  // merely clicked and left empty used to hold focus forever, which is why the
+  // notch would refuse to collapse until you clicked somewhere else.
+  const holdsFocus = (el) => {
+    if (!el || document.activeElement !== el) return false;
+    if (el.value.trim() !== '') return true;
+    el.blur();
+    return false;
+  };
+  if (holdsFocus(document.getElementById('dashSearchInput'))) return;
+  if (holdsFocus(document.getElementById('msgReplyInput'))) return;
   if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
   if (currentState === 'file-tray' && isDragActive) return;
   if (currentState === 'recording') return;
@@ -573,6 +572,25 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       scheduleExpand();
     }
   });
+
+  // Safety net for the collapse. mousemove and mouseleave are not delivered
+  // reliably once the pointer crosses out of the window — flick the cursor away
+  // fast, or move it into another app, and the last event the page sees is
+  // still inside the notch, so it never learns the mouse left and stays open.
+  // Main polls the real cursor and pushes it here; we run the same hit test the
+  // mousemove path does, so a leave can't be missed regardless of event delivery.
+  if (window.notchAPI.onCursorPos) {
+    window.notchAPI.onCursorPos(({ x, y }) => {
+      if (!isExpanded) return;
+      lastMouseX = x;
+      lastMouseY = y;
+      if (isMouseOverNotchBounds({ clientX: x, clientY: y }, true)) {
+        isMouseOverNotch = true;
+      } else {
+        handleNotchLeave();
+      }
+    });
+  }
   collapsedView.addEventListener('click', e => { 
     e.stopPropagation(); 
     if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; } 
@@ -685,22 +703,6 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     }, { passive: false });
   }
 
-  const sub = document.getElementById('subNotch');
-  if (sub) {
-    sub.addEventListener('mouseenter', () => {
-      window.notchAPI.setIgnoreMouse(false);
-    });
-    sub.addEventListener('mouseleave', () => {
-      if (!isExpanded) window.notchAPI.setIgnoreMouse(true);
-    });
-    sub.addEventListener('click', e => {
-      e.stopPropagation();
-      forcedPanel = 'panelIdle';
-      notch.classList.add('forced-full'); // Force ultra-wide layout
-      expand();
-    });
-  }
-
   const deb = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   let isLocalPaused = false;
@@ -709,18 +711,29 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     
     let controlledIframe = false;
     if (typeof mediaData !== 'undefined' && mediaData && mediaData.source === 'YouTube') {
-      const iframes = ['mainYtIframe', 'dashYtIframe', 'musicYtIframe'];
+      const iframes = ['mainYtIframe'];
       for (let id of iframes) {
         const iframe = document.getElementById(id);
         if (iframe && iframe.src && iframe.style.display !== 'none' && iframe.contentWindow) {
           if (action === 'playpause') {
-            isLocalPaused = !isLocalPaused;
-            const func = isLocalPaused ? 'pauseVideo' : 'playVideo';
+            // Ask the player what it is doing rather than toggling a local
+            // flag, which drifted every time playback changed behind our back
+            // (a video ending, an ad, or the PiP controls being used instead).
+            const func = pipState.playing ? 'pauseVideo' : 'playVideo';
+            isLocalPaused = pipState.playing;
             iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: func}), '*');
-          } else if (action === 'next') {
-            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: 'nextVideo'}), '*');
-          } else if (action === 'prev') {
-            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: 'previousVideo'}), '*');
+            setTimeout(pipSubscribe, 60);
+          } else if (action === 'next' || action === 'prev') {
+            const delta = action === 'next' ? 10 : -10;
+            const target = Math.max(0, pipState.duration
+              ? Math.min(pipState.duration, pipState.time + delta)
+              : pipState.time + delta);
+            iframe.contentWindow.postMessage(JSON.stringify({
+              event: 'command', func: 'seekTo', args: [target, true]
+            }), '*');
+            pipState.time = target;
+            pipPaint();
+            setTimeout(pipSubscribe, 60);
           }
           controlledIframe = true;
           break; // only control the visible one
@@ -770,80 +783,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
 
 
 
-  // YouTube Play Buttons Click
-  const dashYtPlayBtn = document.getElementById('dashYtPlayBtn');
-  if (dashYtPlayBtn) {
-    dashYtPlayBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (mediaData && mediaData.videoId) {
-        const iframe = document.getElementById('dashYtIframe');
-        const overlay = document.getElementById('ytPlayOverlay');
-        if (iframe && overlay) {
-          overlay.style.display = 'none';
-          iframe.style.display = 'block';
-          iframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-        }
-      }
-    });
-  }
 
-  const dashYtPipBtn = document.getElementById('dashYtPipBtn');
-  if (dashYtPipBtn) {
-    dashYtPipBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (mediaData && mediaData.videoId) {
-        // Stop in-cover-art playback if active
-        const dashIframe = document.getElementById('dashYtIframe');
-        if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
-        const musicIframe = document.getElementById('musicYtIframe');
-        if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
-        
-        // Open PiP Notch Player
-        forcedPanel = null;
-        notch.classList.remove('forced-full');
-        currentState = 'video';
-        notch.setAttribute('data-state', 'video');
-        showActivePanel();
-        openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
-      }
-    });
-  }
-
-  const musicYtPlayBtn = document.getElementById('musicYtPlayBtn');
-  if (musicYtPlayBtn) {
-    musicYtPlayBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (mediaData && mediaData.videoId) {
-        const iframe = document.getElementById('musicYtIframe');
-        const overlay = document.getElementById('ytMusicPlayOverlay');
-        if (iframe && overlay) {
-          overlay.style.display = 'none';
-          iframe.style.display = 'block';
-          iframe.src = `https://www.youtube-nocookie.com/embed/${mediaData.videoId}?autoplay=1&enablejsapi=1`;
-        }
-      }
-    });
-  }
-
-  const musicYtPipBtn = document.getElementById('musicYtPipBtn');
-  if (musicYtPipBtn) {
-    musicYtPipBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (mediaData && mediaData.videoId) {
-        // Stop in-cover-art playback if active
-        const dashIframe = document.getElementById('dashYtIframe');
-        if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
-        const musicIframe = document.getElementById('musicYtIframe');
-        if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
-        
-        // Open PiP Notch Player
-        currentState = 'video';
-        notch.setAttribute('data-state', 'video');
-        showActivePanel();
-        openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
-      }
-    });
-  }
 
   const closeVideoBtn = document.getElementById('closeVideoBtn');
   if (closeVideoBtn) {
@@ -875,7 +815,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   
   // Helper to update star/PiP button icon based on videoId availability
   function updateStarButtons() {
-    const hasVideo = mediaData && mediaData.videoId;
+    const hasVideo = hasPipVideo();
     const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
     const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
     
@@ -886,11 +826,11 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       const svg = pStar.querySelector('svg');
       if (svg) {
         if (hasVideo) {
-          svg.outerHTML = starSvg;
-          pStar.title = 'Toggle favorite';
-        } else {
           svg.outerHTML = pipSvg;
           pStar.title = 'Play in Notch PiP';
+        } else {
+          svg.outerHTML = starSvg;
+          pStar.title = 'Toggle favorite';
         }
       }
     }
@@ -898,11 +838,11 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       const svg = dStar.querySelector('svg');
       if (svg) {
         if (hasVideo) {
-          svg.outerHTML = starSvg;
-          dStar.title = 'Toggle favorite';
-        } else {
           svg.outerHTML = pipSvg;
           dStar.title = 'Play in Notch PiP';
+        } else {
+          svg.outerHTML = starSvg;
+          dStar.title = 'Toggle favorite';
         }
       }
     }
@@ -911,44 +851,36 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
   if(pStar) pStar.addEventListener('click', (e) => {
     e.stopPropagation();
-    const hasVideo = mediaData && mediaData.videoId;
+    const hasVideo = hasPipVideo();
     if (hasVideo) {
-      // Toggle favorite star state
-      toggleStar(pStar);
-    } else {
-      // Stop in-cover-art playback if active
-      const dashIframe = document.getElementById('dashYtIframe');
-      if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
-      const musicIframe = document.getElementById('musicYtIframe');
-      if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
-      
       // Open PiP Notch Player
+      forcedPanel = null;
+      notch.classList.remove('forced-full');
       currentState = 'video';
       notch.setAttribute('data-state', 'video');
       showActivePanel();
       openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+    } else {
+      // Nothing to put in PiP — fall back to the favourite toggle.
+      toggleStar(pStar);
     }
   });
 
   const dStar = document.getElementById('dashStarBtn'); // dashMusic star
   if(dStar) dStar.addEventListener('click', (e) => {
     e.stopPropagation();
-    const hasVideo = mediaData && mediaData.videoId;
+    const hasVideo = hasPipVideo();
     if (hasVideo) {
-      // Toggle favorite star state
-      toggleStar(dStar);
-    } else {
-      // Stop in-cover-art playback if active
-      const dashIframe = document.getElementById('dashYtIframe');
-      if (dashIframe) { dashIframe.style.display = 'none'; dashIframe.src = ''; }
-      const musicIframe = document.getElementById('musicYtIframe');
-      if (musicIframe) { musicIframe.style.display = 'none'; musicIframe.src = ''; }
-      
       // Open PiP Notch Player
+      forcedPanel = null;
+      notch.classList.remove('forced-full');
       currentState = 'video';
       notch.setAttribute('data-state', 'video');
       showActivePanel();
       openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+    } else {
+      // Nothing to put in PiP — fall back to the favourite toggle.
+      toggleStar(dStar);
     }
   });
 
@@ -1899,8 +1831,14 @@ function getAverageRGB(img) {
   } catch(e){return fallback}
 }
 
+// A PiP video only exists for YouTube. Other sources (Spotify, local players)
+// report a track but nothing embeddable, so they keep the favourite star.
+function hasPipVideo() {
+  return !!(mediaData && mediaData.videoId && mediaData.source === 'YouTube');
+}
+
 function updateStarButtons() {
-    const hasVideo = mediaData && mediaData.videoId;
+    const hasVideo = hasPipVideo();
     const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
     const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
     
@@ -1911,11 +1849,11 @@ function updateStarButtons() {
       const svg = pStar.querySelector('svg');
       if (svg) {
         if (hasVideo) {
-          svg.outerHTML = starSvg;
-          pStar.title = 'Toggle favorite';
-        } else {
           svg.outerHTML = pipSvg;
           pStar.title = 'Play in Notch PiP';
+        } else {
+          svg.outerHTML = starSvg;
+          pStar.title = 'Toggle favorite';
         }
       }
     }
@@ -1923,11 +1861,11 @@ function updateStarButtons() {
       const svg = dStar.querySelector('svg');
       if (svg) {
         if (hasVideo) {
-          svg.outerHTML = starSvg;
-          dStar.title = 'Toggle favorite';
-        } else {
           svg.outerHTML = pipSvg;
           dStar.title = 'Play in Notch PiP';
+        } else {
+          svg.outerHTML = starSvg;
+          dStar.title = 'Toggle favorite';
         }
       }
     }
@@ -1938,26 +1876,8 @@ function updateStarButtons() {
   const placeholder = document.getElementById('albumPlaceholder');
   const cAlbum = document.getElementById('cAlbumImg');
 
-  // Update star/PiP buttons based on whether video is available
-  const hasVideo = mediaData && mediaData.videoId;
-  const pStar = document.getElementById('shuffleBtn');
-  const dStar = document.getElementById('dashStarBtn');
-  const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
-  const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-  
-  function updateStarButton(btn) {
-    if (!btn) return;
-    if (hasVideo) {
-      btn.innerHTML = starSvg;
-      btn.title = 'Add to favorites';
-    } else {
-      btn.innerHTML = pipSvg;
-      btn.title = 'Play in Notch PiP';
-    }
-  }
-  
-  updateStarButton(pStar);
-  updateStarButton(dStar);
+  // Update star/PiP buttons based on whether a YouTube video is available
+  updateStarButtons();
 
   if (mediaData.playing || mediaData.paused) {
     const track = mediaData.track || mediaData.title;
@@ -2018,45 +1938,12 @@ function updateStarButtons() {
       cAlbum.style.display = 'block';
       const dashImg = document.getElementById('dashCoverImg');
       const dashPh = document.getElementById('dashArtPlaceholder');
-      const ytPlayOverlay = document.getElementById('ytPlayOverlay');
-      const ytIframe = document.getElementById('dashYtIframe');
-      const ytMusicPlayOverlay = document.getElementById('ytMusicPlayOverlay');
-      const musicYtIframe = document.getElementById('musicYtIframe');
       
       if (dashImg) { dashImg.src = mediaData.artUrl; dashImg.style.display = 'block'; }
       if (dashPh) { dashPh.style.display = 'none'; }
       
-      if (mediaData.videoId) {
-        if (ytPlayOverlay) ytPlayOverlay.style.display = 'flex';
-        if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'flex';
-        // Hide iframes initially if the track changes
-        if (ytIframe && !ytIframe.src.includes(mediaData.videoId)) {
-            ytIframe.style.display = 'none';
-            ytIframe.src = '';
-        }
-        if (musicYtIframe && !musicYtIframe.src.includes(mediaData.videoId)) {
-            musicYtIframe.style.display = 'none';
-            musicYtIframe.src = '';
-        }
-      } else {
-        if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
-        if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
-        if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'none';
-        if (musicYtIframe) { musicYtIframe.style.display = 'none'; musicYtIframe.src = ''; }
-        // Reset to PiP icon when no videoId
-        const pStar = document.getElementById('shuffleBtn');
-        if (pStar) {
-          pStar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-          pStar.style.color = 'rgba(255,255,255,0.5)';
-          pStar.title = 'Play in Notch PiP';
-        }
-        const dStar = document.getElementById('dashStarBtn');
-        if (dStar) {
-          dStar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-          dStar.style.color = 'rgba(255,255,255,0.5)';
-          dStar.title = 'Play in Notch PiP';
-        }
-      }
+      // A video used to black out the album art behind a "Click to play"
+      // overlay. Video belongs to the PiP player now, so art stays art.
 
       const btmuImg = document.getElementById('btmuCoverImg');
       const btmuPh = document.getElementById('btmuAlbumPh');
@@ -2075,14 +1962,6 @@ function updateStarButtons() {
       if (dashImg) dashImg.style.display = 'none';
       const dashPh = document.getElementById('dashArtPlaceholder');
       if (dashPh) dashPh.style.display = 'flex';
-      const ytPlayOverlay = document.getElementById('ytPlayOverlay');
-      const ytIframe = document.getElementById('dashYtIframe');
-      if (ytPlayOverlay) ytPlayOverlay.style.display = 'none';
-      if (ytIframe) { ytIframe.style.display = 'none'; ytIframe.src = ''; }
-      const ytMusicPlayOverlay = document.getElementById('ytMusicPlayOverlay');
-      const musicYtIframe = document.getElementById('musicYtIframe');
-      if (ytMusicPlayOverlay) ytMusicPlayOverlay.style.display = 'none';
-      if (musicYtIframe) { musicYtIframe.style.display = 'none'; musicYtIframe.src = ''; }
     }
   } else {
     const songTitle = document.getElementById('songTitle');
@@ -2780,7 +2659,11 @@ async function fetchRecording() {
     });
   }
   if (window.notchAPI.onBluetoothUpdate) window.notchAPI.onBluetoothUpdate(showBluetoothToast);
-  if (window.notchAPI.onMediaUpdate) window.notchAPI.onMediaUpdate(handleMediaUpdate);
+  if (window.notchAPI.onMediaUpdate) window.notchAPI.onMediaUpdate((data) => {
+    handleMediaUpdate(data);
+    // Swap the star for the PiP glyph when the track has a video behind it.
+    try { updateStarButtons(); } catch (e) {}
+  });
   window.notchAPI.onAudioPeak((peak) => {
     updateVisualizerWithPeak(peak);
   });
@@ -3023,12 +2906,14 @@ function executeSearch() {
     
     const query = encodeURIComponent(val);
     const url = `https://www.google.com/search?q=${query}`;
-    window.notchAPI.openUrl(url);
+    // Collapse first so the notch reacts on the same frame as the keypress
+    // instead of waiting on the IPC round trip.
     dashSearchInput.value = '';
     collapse();
+    window.notchAPI.openUrl(url);
   } else {
-    window.notchAPI.openUrl('https://www.google.com');
     collapse();
+    window.notchAPI.openUrl('https://www.google.com');
   }
 }
 
@@ -3055,6 +2940,36 @@ if (searchGoogleIcon) {
    carrying currentTime, duration and playerState. */
 let pipState = { time: 0, duration: 0, playing: false, muted: false, loop: false, videoId: null };
 let pipPoll = null;
+let pipTick = null;
+
+// The player reports roughly once a second, so between reports the scrub bar
+// sat frozen and then jumped. Advance it against the wall clock locally and let
+// each incoming report snap it back to the truth.
+function pipStartTick() {
+  clearInterval(pipTick);
+  let last = Date.now();
+  pipTick = setInterval(() => {
+    const now = Date.now();
+    const dt = (now - last) / 1000;
+    last = now;
+    if (pipState.playing && pipState.duration > 0) {
+      pipState.time = Math.min(pipState.duration, pipState.time + dt);
+      pipPaint();
+    }
+  }, 100);
+}
+
+// The music and dashboard panels have their own play buttons; they must show
+// what the player is really doing, not what someone last clicked.
+function syncPlayIcons() {
+  const playSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const pauseSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
+  ['playBtn', 'dashPlayBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    const svg = btn && btn.querySelector('svg');
+    if (svg) svg.outerHTML = pipState.playing ? pauseSvg : playSvg;
+  });
+}
 
 function pipCmd(func, args) {
   const frame = document.getElementById('mainYtIframe');
@@ -3113,6 +3028,10 @@ window.addEventListener('message', (e) => {
   if (typeof i.muted === 'boolean') pipState.muted = i.muted;
   if (typeof i.playerState === 'number') {
     pipState.playing = i.playerState === 1;
+    // One source of truth: the panel buttons follow the player.
+    isLocalPaused = !pipState.playing;
+    if (typeof mediaData !== 'undefined' && mediaData) mediaData.paused = isLocalPaused;
+    syncPlayIcons();
     // 0 = ended; the loop toggle in the footer restarts it.
     if (i.playerState === 0 && pipState.loop) pipCmd('seekTo', [0, true]);
   }
@@ -3145,13 +3064,15 @@ function openPipVideo(videoId, title, channel, art) {
   // The player pushes updates while playing but goes quiet when paused or
   // buffering; a slow poll keeps the bar honest without spamming the frame.
   pipPoll = setInterval(pipSubscribe, 1000);
+  pipStartTick();
 }
 
 function closePipVideo() {
   const frame = document.getElementById('mainYtIframe');
   if (frame) { frame.onload = null; frame.src = ''; }
   clearInterval(pipPoll);
-  pipPoll = null;
+  clearInterval(pipTick);
+  pipPoll = pipTick = null;
   pipState.playing = false;
 }
 
@@ -3162,8 +3083,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   on('pipPlayBtn', () => {
     pipCmd(pipState.playing ? 'pauseVideo' : 'playVideo');
+    // Flip optimistically so the button answers instantly, then ask the player
+    // right away — its reply overrides this within a frame or two.
     pipState.playing = !pipState.playing;
     pipPaint();
+    setTimeout(pipSubscribe, 60);
   });
   on('pipPrevBtn', () => pipCmd('seekTo', [Math.max(0, pipState.time - 10), true]));
   on('pipNextBtn', () => pipCmd('seekTo', [pipState.time + 10, true]));

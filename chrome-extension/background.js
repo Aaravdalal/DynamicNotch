@@ -11,7 +11,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         text: request.text,
         app: request.app,
         time: 'now'
+
       })
     }).catch(err => console.error('Failed to forward message:', err));
   }
 });
+

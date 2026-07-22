@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('notchAPI', {
   getBattery: () => ipcRenderer.invoke('get-battery'),
   setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
   focusWindow: () => ipcRenderer.send('focus-window'),
+  onCursorPos: (callback) => {
+    ipcRenderer.on('cursor-pos', (event, pos) => callback(pos));
+  },
   onBatteryUpdate: (callback) => {
     ipcRenderer.on('battery-update', (event, batState) => callback(batState));
   },

@@ -753,6 +753,29 @@ $unique | Select-Object name, path, icon | ConvertTo-Json -Depth 3
   return [];
 });
 
+  // ─── Authoritative cursor watch ───
+  // The renderer decides when to collapse from mousemove/mouseleave, but
+  // Windows drops those the moment the pointer leaves the window fast or
+  // crosses into another app — so the notch would stay stuck open. Poll the
+  // real cursor while the window is interactive and push it to the renderer,
+  // which treats it exactly like a mousemove. A leave can no longer be missed.
+  let cursorWatch = null;
+  const stopCursorWatch = () => {
+    if (cursorWatch) { clearInterval(cursorWatch); cursorWatch = null; }
+  };
+  const startCursorWatch = () => {
+    if (cursorWatch) return;
+    cursorWatch = setInterval(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return stopCursorWatch();
+      try {
+        const p = screen.getCursorScreenPoint();
+        const b = mainWindow.getBounds();
+        // Both are DIP, which matches the renderer's CSS pixels at zoom 1.
+        mainWindow.webContents.send('cursor-pos', { x: p.x - b.x, y: p.y - b.y });
+      } catch (e) {}
+    }, 80);
+  };
+
   ipcMain.on('set-ignore-mouse', (_, ignore) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       try {
@@ -760,6 +783,7 @@ $unique | Select-Object name, path, icon | ConvertTo-Json -Depth 3
         mainWindow.setFocusable(!ignore);
       } catch (e) {}
     }
+    if (ignore) stopCursorWatch(); else startCursorWatch();
   });
 
   ipcMain.on('focus-window', () => {
@@ -1146,10 +1170,12 @@ app.whenReady().then(() => {
     return true;
   });
 
+  // Hand the URL straight to the shell. The old path booted a whole PowerShell
+  // process per search, which cost half a second before the browser even heard
+  // about it — and pasted the URL into a command string, so a quote in the
+  // query broke it.
   ipcMain.handle('open-url', (_, url) => {
-    require('child_process').exec(`powershell -NoProfile -Command "Start-Process chrome -ArgumentList '${url}'"`, (err) => {
-      if (err) require('electron').shell.openExternal(url);
-    });
+    require('electron').shell.openExternal(url);
   });
   createWindow();
   createTray();

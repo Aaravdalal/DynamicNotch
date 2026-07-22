@@ -222,29 +222,6 @@ html, body {
   animation: fadeInCenter .3s var(--ease) forwards;
 }
 
-/* ─── SUB NOTCH (Island sibling) ─── */
-.sub-notch{
-  position:fixed;top:0;
-  background:var(--bg);
-  height:38px;width:0;
-  border-radius:0 0 16px 16px;
-  left:calc(50% + 190px); /* 180 (half of 360) + 10 gap */
-  transition:width .45s var(--spring), opacity .3s var(--ease), transform .45s var(--spring);
-  opacity:0;pointer-events:none;
-  cursor:pointer;
-  box-shadow:0 8px 15px rgba(0,0,0,0.5);
-  display:flex;align-items:center;justify-content:center;
-  z-index:100;
-}
-.sub-notch.visible{
-  width:52px;opacity:1;pointer-events:all;
-}
-.sub-notch::after{
-  content:'';width:32px;height:32px;border-radius:50%;
-  background:linear-gradient(135deg,#6C5CE7,#a29bfe);
-  opacity:0.8;
-}
-
 .notch[data-state="music"] .c-time-wrap,
 .notch[data-state="bt-music"] .c-time-wrap,
 .notch[data-state="timer"] .c-time-wrap,

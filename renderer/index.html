@@ -334,14 +334,6 @@
             </div>
 </div>
           
-          <!-- YouTube iframe for dashboard -->
-          <div id="ytPlayOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.8);z-index:50;border-radius:inherit;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#fff;">
-            <div id="dashYtPlayBtn" style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.4);" title="Play on YouTube">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="#ff0000"><path d="M8 5v14l11-7z"/></svg>
-            </div>
-            <div style="font-size:13px;color:rgba(255,255,255,0.7);">Click to play on YouTube</div>
-          </div>
-           <iframe id="dashYtIframe" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="display:none;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         </div>
       </div>
 
@@ -417,14 +409,6 @@
 
       <!-- ═══ PANEL: MUSIC ═══ -->
       <div class="panel panel-music" id="panelMusic" style="display: flex; flex-direction: row; gap: 16px; align-items: center; padding: 12px 20px; position: relative;">
-        <!-- YouTube overlay for music panel -->
-        <div id="ytMusicPlayOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.8);z-index:50;border-radius:inherit;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#fff;">
-          <div id="musicYtPlayBtn" style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.4);" title="Play on YouTube Music">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="#ff0000"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-          <div style="font-size:13px;color:rgba(255,255,255,0.7);">Click to play on YouTube Music</div>
-        </div>
-        <iframe id="musicYtIframe" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="display:none;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         
         <!-- Left Side: Large Album Art -->
         <div class="mu-art" id="albumArt" style="width: 84px; height: 84px; border-radius: 18px; flex-shrink: 0; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
@@ -753,7 +737,6 @@
   </div>
 
   <!-- Sub-notch (island sibling for music) -->
-  <div class="sub-notch" id="subNotch"></div>
 
   <!-- External scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
