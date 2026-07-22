@@ -5,6 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "kill": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill-instances.ps1",
+    "fresh": "npm run kill && npm start",
     "build": "electron-builder"
   },
   "dependencies": {

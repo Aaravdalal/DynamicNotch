@@ -790,6 +790,12 @@ $unique | Select-Object name, path, icon | ConvertTo-Json -Depth 3
 // ===== HIDDEN WEBVIEWS =====
 let hiddenMessages;
 let hiddenGchat;
+let createMessagesWindow = null; // set by createHiddenWindows()
+
+// Plain Chrome UA — Electron's own token makes Google treat us as unsupported
+// and skip the QR entirely. Keep in sync with the bundled Chromium
+// (Electron 34 = Chromium 132).
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
 function createHiddenWindows() {
   const { session } = require('electron');
@@ -805,7 +811,7 @@ function createHiddenWindows() {
   // Use a plain Chrome user agent (strip Electron's "Electron/xx" token, which
   // makes Google treat us as unsupported and skip the QR). Keep the version in
   // sync with the bundled Chromium (Electron 34 = Chromium 132).
-  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+  const chromeUA = CHROME_UA;
 
   const commonOptions = {
     width: 1000, height: 800,
@@ -820,7 +826,12 @@ function createHiddenWindows() {
   };
 
   // --- Google Messages ---
-  hiddenMessages = new BrowserWindow(commonOptions);
+  // Built through a factory so pairing can rebuild the SAME window visibly.
+  // Two windows on this partition means two live pairing sessions, and the
+  // second QR invalidates the first — pairing then never completes, which
+  // also leaves the window signed out and killing message interception.
+  function makeMessages(visible) {
+  hiddenMessages = new BrowserWindow({ ...commonOptions, show: !!visible });
   hiddenMessages.webContents.setUserAgent(chromeUA);
 
   // Surface page-side errors in the app log — the pairing page fails silently
@@ -832,13 +843,6 @@ function createHiddenWindows() {
   hiddenMessages.webContents.on('did-finish-load', () => {
     const url = hiddenMessages.webContents.getURL();
     console.log('[Messages] Page loaded:', url);
-
-    // The QR paints correctly offscreen but the on-screen surface can stay
-    // stale when the window is revealed, so repaint whenever the auth page
-    // finishes loading while visible.
-    if (url.includes('/authentication') && hiddenMessages.isVisible()) {
-      forceRepaint(hiddenMessages);
-    }
 
     // Inject the Notification interceptor via executeJavaScript().
     // This bypasses Google's Trusted Types CSP that blocks script.textContent.
@@ -917,6 +921,53 @@ function createHiddenWindows() {
     hiddenMessages.hide();
   });
 
+  if (visible) {
+    // Windows won't let a background process take the foreground, so without
+    // this the pairing window opens *behind* whatever the user is doing and
+    // looks like it never appeared.
+    // Stays on top for its whole life. Windows won't let a background process
+    // take the foreground, and the auth page needs ~20s to load — dropping
+    // alwaysOnTop right after showing put the window behind whatever the user
+    // was doing, long before the QR had even rendered. It is released when the
+    // window hides after pairing.
+    const bringToFront = () => {
+      if (!hiddenMessages || hiddenMessages.isDestroyed()) return;
+      hiddenMessages.setAlwaysOnTop(true, 'screen-saver');
+      hiddenMessages.show();
+      hiddenMessages.moveTop();
+      hiddenMessages.focus();
+    };
+    bringToFront(); // don't wait for the page — show the frame immediately
+    hiddenMessages.once('ready-to-show', bringToFront);
+    hiddenMessages.webContents.once('did-finish-load', bringToFront);
+
+    // Paired: Google leaves /authentication. Duck back out of sight and carry
+    // on intercepting — the window has painted, so hiding is safe.
+    // Only treat this as "paired" once the URL has SETTLED off the auth page.
+    // Loading /web/authentication goes through /web/ first, and reacting to
+    // that intermediate hop hid the pairing window a second after it opened —
+    // which looked exactly like the window never appearing.
+    const onNavigate = () => {
+      if (!hiddenMessages || hiddenMessages.isDestroyed()) return;
+      setTimeout(() => {
+        if (!hiddenMessages || hiddenMessages.isDestroyed()) return;
+        const u = hiddenMessages.webContents.getURL();
+        if (u && u.includes('messages.google.com') && !u.includes('/authentication')) {
+          console.log('[Messages] Paired — returning the window to the background.');
+          hiddenMessages.setAlwaysOnTop(false);
+          hiddenMessages.hide();
+          hiddenMessages.setSkipTaskbar(true);
+        }
+      }, 2500);
+    };
+    hiddenMessages.webContents.on('did-navigate', onNavigate);
+    hiddenMessages.webContents.on('did-navigate-in-page', onNavigate);
+  }
+  }
+
+  createMessagesWindow = makeMessages;
+  makeMessages(false);
+
   // --- Google Chat ---
   hiddenGchat = new BrowserWindow(commonOptions);
   hiddenGchat.webContents.setUserAgent(chromeUA);
@@ -928,62 +979,64 @@ function createHiddenWindows() {
 
 }
 
+// Trusted input for the hidden Messages window.
+//
+// Google Messages ignores untrusted events for sending: element.click() and
+// synthetic KeyboardEvents both carry isTrusted:false, so the composer keeps
+// the text and nothing is sent even with Send enabled. sendInputEvent injects
+// input at the Chromium level, which the page cannot tell from a real user.
+// Works on a hidden window — this goes to the renderer, not through the OS.
+function messagesInput(events) {
+  if (!hiddenMessages || hiddenMessages.isDestroyed()) return;
+  const wc = hiddenMessages.webContents;
+  for (const ev of events) {
+    try { wc.sendInputEvent(ev); } catch (e) {}
+  }
+}
+
+ipcMain.on('hidden-trusted-click', (event, pos) => {
+  const x = Math.round(pos && pos.x), y = Math.round(pos && pos.y);
+  if (!isFinite(x) || !isFinite(y)) return;
+  console.log('[Messages] trusted click at', x, y);
+  messagesInput([
+    { type: 'mouseMove', x, y },
+    { type: 'mouseDown', x, y, button: 'left', clickCount: 1 },
+    { type: 'mouseUp', x, y, button: 'left', clickCount: 1 },
+  ]);
+});
+
+ipcMain.on('hidden-trusted-enter', () => {
+  console.log('[Messages] trusted Enter');
+  messagesInput([
+    { type: 'keyDown', keyCode: 'Enter' },
+    { type: 'char', keyCode: 'Enter' },
+    { type: 'keyUp', keyCode: 'Enter' },
+  ]);
+});
+
 ipcMain.on('hidden-live-message', (event, data) => {
   console.log('[HiddenMessage] Intercepted from', data.app, data.sender);
   safeSend('live-message', data);
 });
 
-// Surfaces the hidden Google Messages window so the user can scan the QR
-// pairing code. Shared by the tray menu, the "open-login-window" IPC call,
-// and the reply pipeline's not-signed-in fallback below.
-// Kick Chromium into recompositing a window. A window created with show:false
-// renders offscreen fine — capturePage() of the blank-looking pairing page
-// showed a perfectly good QR — but with hardware acceleration off, the surface
-// it presents after being revealed can stay stale, leaving the QR area white.
-// invalidate() alone isn't always enough, so also nudge the bounds by a pixel,
-// which forces the compositor to rebuild the whole surface.
-function forceRepaint(win) {
-  if (!win || win.isDestroyed()) return;
-  try {
-    win.webContents.invalidate();
-    const bounds = win.getBounds();
-    win.setBounds({ ...bounds, height: bounds.height + 1 });
-    setTimeout(() => {
-      if (!win.isDestroyed()) win.setBounds(bounds);
-    }, 60);
-  } catch (e) {}
-}
-
+// Surfaces the Google Messages window so the user can scan the QR pairing
+// code. Shared by the tray menu, the "open-login-window" IPC call, and the
+// reply pipeline's not-signed-in fallback.
+//
+// The window is REBUILT visible rather than revealing the background one. A
+// window created with show:false never paints — with hardware acceleration off,
+// show() gave a window Electron reported as visible and focused, at valid
+// bounds, that drew nothing. Opening a SECOND window instead was worse: two
+// pages on this partition means two live pairing sessions, and the second QR
+// invalidates the first, so pairing silently never completes and the window
+// stays signed out — which also stops message interception.
 function showMessagesLogin() {
-  if (!hiddenMessages) return;
-  hiddenMessages.setOpacity(1);
-  hiddenMessages.show();
-  hiddenMessages.setSkipTaskbar(false);
-  hiddenMessages.focus();
-
-  // The window is created hidden (show:false), and Chromium skips painting the
-  // QR <canvas> while a window is occluded — so it can come up blank. Now that
-  // the window is actually visible, reload the auth page so Google regenerates
-  // and paints a fresh QR. Only do this when we're not already signed in.
-  try {
-    const url = hiddenMessages.webContents.getURL();
-    if (!url || url.includes('/authentication')) {
-      hiddenMessages.webContents.reload();
-    }
-  } catch (e) {}
-
-  // Repaint once the window is actually up, and again shortly after in case the
-  // reload's first frame lands before the surface is ready.
-  forceRepaint(hiddenMessages);
-  setTimeout(() => forceRepaint(hiddenMessages), 900);
-
-  hiddenMessages.removeAllListeners('close');
-  hiddenMessages.on('close', (e) => {
-    e.preventDefault();
-    hiddenMessages.hide();
-    hiddenMessages.setSkipTaskbar(true);
-    hiddenMessages.setOpacity(0);
-  });
+  if (typeof createMessagesWindow !== 'function') return;
+  if (hiddenMessages && !hiddenMessages.isDestroyed()) {
+    hiddenMessages.destroy();
+    hiddenMessages = null;
+  }
+  createMessagesWindow(true);
 }
 
 // Nuclear option for a genuinely corrupt persisted session: wipe the

@@ -77,11 +77,25 @@ function findComposer() {
 }
 
 function findSendButton() {
+  // Name the real control first — a text scan for "send" also matches the
+  // "Send feedback" link, and that is what ends up being clicked.
+  const usable = el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  const exact = [
+    'mws-message-send-button button',
+    'button[data-e2e-send-button]',
+    'button[aria-label*="Send message" i]',
+    'button[aria-label*="Send SMS" i]',
+    'button[aria-label*="Send RCS" i]',
+  ];
+  for (const sel of exact) {
+    const el = document.querySelector(sel);
+    if (usable(el)) return el;
+  }
   return Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
-    const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
-    return label.includes('send') && !label.includes('schedule') &&
-           !label.includes('attach') && !el.disabled &&
-           el.getAttribute('aria-disabled') !== 'true';
+    const label = (el.getAttribute('aria-label') || el.textContent || '').trim().toLowerCase();
+    if (!usable(el)) return false;
+    if (/feedback|help|schedule|attach|emoji|sticker|gif/.test(label)) return false;
+    return label === 'send' || label === 'send message' || /^send (sms|rcs|message)\b/.test(label);
   });
 }
 

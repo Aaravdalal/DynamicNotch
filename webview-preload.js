@@ -61,12 +61,31 @@ function findComposer() {
   return null;
 }
 
+const usable = el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+
 function findSendButton() {
+  // Ask for the real control by name first. A blind text scan for "send" also
+  // matches the "Send feedback" link Google puts on these pages, and since
+  // .find() returns whichever comes first in the DOM, that is what got clicked
+  // — the text sat in the composer showing "typing…" and never went anywhere.
+  const exact = [
+    'mws-message-send-button button',
+    'button[data-e2e-send-button]',
+    'button[aria-label*="Send message" i]',
+    'button[aria-label*="Send SMS" i]',
+    'button[aria-label*="Send RCS" i]',
+  ];
+  for (const sel of exact) {
+    const el = document.querySelector(sel);
+    if (usable(el)) return el;
+  }
+
+  // Fallback: the label must BE "send"/"send message", never merely contain it.
   return Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
-    const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
-    return label.includes('send') && !label.includes('schedule') &&
-           !label.includes('attach') && !el.disabled &&
-           el.getAttribute('aria-disabled') !== 'true';
+    const label = (el.getAttribute('aria-label') || el.textContent || '').trim().toLowerCase();
+    if (!usable(el)) return false;
+    if (/feedback|help|schedule|attach|emoji|sticker|gif/.test(label)) return false;
+    return label === 'send' || label === 'send message' || /^send (sms|rcs|message)\b/.test(label);
   });
 }
 
@@ -134,30 +153,86 @@ async function deliverReply(job) {
     composer.focus();
     // execCommand routes through the browser's own editing path, so Angular
     // registers the change and enables Send; assigning .value does not.
-    if (!document.execCommand('insertText', false, job.text)) {
-      composer.textContent = job.text;
+    let ok = false;
+    try { ok = document.execCommand('insertText', false, job.text); } catch (e) {}
+
+    const current = () => (composer.value != null ? composer.value : composer.textContent) || '';
+    if (!ok || current().trim() !== job.text.trim()) {
+      // execCommand can silently no-op. Go through the element's native value
+      // setter instead — Angular's own listener sits on the resulting `input`
+      // event, so this still updates the model (plain `.value =` does not).
+      const proto = composer instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : (composer instanceof HTMLInputElement ? HTMLInputElement.prototype : null);
+      const setter = proto && Object.getOwnPropertyDescriptor(proto, 'value').set;
+      if (setter) setter.call(composer, job.text);
+      else composer.textContent = job.text;
     }
-    composer.dispatchEvent(new Event('input', { bubbles: true }));
+
+    composer.dispatchEvent(new InputEvent('input', {
+      bubbles: true, cancelable: false, inputType: 'insertText', data: job.text
+    }));
+    composer.dispatchEvent(new Event('change', { bubbles: true }));
     await sleep(300);
   }
 
-  const sendBtn = await waitFor(findSendButton, 4000);
-  if (sendBtn) {
-    sendBtn.click();
-  } else {
+  // Read back the box we actually typed into. Re-querying found a different
+  // (or missing) element once the page shifted, which read as empty and let a
+  // failed send report success.
+  const stillPending = () => {
+    const el = document.contains(composer) ? composer : findComposer();
+    const text = ((el && (el.value != null ? el.value : el.textContent)) || '').trim();
+    return job.text ? text === job.text.trim() : false;
+  };
+
+  const pressEnter = () => {
+    composer.focus();
     ['keydown', 'keypress', 'keyup'].forEach(type => {
       composer.dispatchEvent(new KeyboardEvent(type, {
         key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
       }));
     });
-  }
+  };
 
-  // Confirm it left: the composer clears once Messages accepts the message.
+  const sendBtn = await waitFor(findSendButton, 4000);
+  if (sendBtn) sendBtn.click(); else pressEnter();
+
+  // The composer clears once Messages accepts the message.
+  await sleep(700);
+  if (stillPending()) pressEnter();
+
+  // Still there: the page is refusing our synthetic events, which carry
+  // isTrusted:false. Ask main to inject REAL Chromium input — a click on the
+  // Send button's own coordinates, then Enter.
   await sleep(600);
-  const after = findComposer();
-  const leftover = ((after && (after.value || after.textContent)) || '').trim();
-  if (job.text && leftover === job.text.trim()) {
-    throw new Error('Message box did not clear — send was rejected');
+  if (stillPending() && sendBtn && document.contains(sendBtn)) {
+    const r = sendBtn.getBoundingClientRect();
+    if (r.width && r.height) {
+      ipcRenderer.send('hidden-trusted-click', { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      await sleep(900);
+    }
+  }
+  if (stillPending()) {
+    composer.focus();
+    ipcRenderer.send('hidden-trusted-enter');
+    await sleep(900);
+  }
+  if (stillPending()) {
+    // Report what the page actually looked like. "Did not accept it" alone
+    // can't distinguish a disabled Send button from no conversation being
+    // open from the text never reaching Angular's model.
+    const anySend = document.querySelector('mws-message-send-button button, button[data-e2e-send-button], button[aria-label*="Send" i]');
+    const openThread = document.querySelector('mws-message-wrapper, [data-e2e-conversation-container], mws-messages-list');
+    const details = [
+      'path=' + location.pathname,
+      'composer=' + composer.tagName.toLowerCase() + '/' + (composer.getAttribute('aria-label') || '?').slice(0, 24),
+      'clickedEnabledSend=' + !!sendBtn,
+      'triedTrustedInput=yes',
+      'sendBtnInDom=' + !!anySend,
+      'sendBtnDisabled=' + (anySend ? String(anySend.disabled || anySend.getAttribute('aria-disabled') || false) : 'n/a'),
+      'threadOpen=' + !!openThread,
+    ].join(' ');
+    throw new Error('Message stayed in the box [' + details + ']');
   }
 }
 
