@@ -269,6 +269,11 @@ html, body {
    350ms/120ms-delay fade left both stacked on screen for the whole resize. */
 .panel.leaving{transition:opacity .11s linear;animation:none}
 @keyframes panelIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+/* While the notch springs into/out of the wide music dashboard, keep every panel
+   hidden so the full-width layout doesn't reflow-stretch inside the still-narrow
+   notch. JS removes .resizing-full once the resize settles; the active panel
+   (inline opacity:1) then fades in cleanly at the correct size. */
+.notch.resizing-full .panel{opacity:0 !important;animation:none !important}
 /* Video panel rules moved to top */
 .notch.expanded[data-state="idle"] .panel-idle,
 .notch.expanded[data-state="music"] .panel-idle,
@@ -686,7 +691,11 @@ html, body {
    then eases back — instead of a static ellipsis. Only applied (via .mq-scroll,
    added by JS) when the text actually overflows; short titles stay put. The
    inner span is what moves; the container already clips with overflow:hidden. */
-.mq{overflow:hidden;white-space:nowrap}
+/* contain:paint forces the box to clip its own painting on the compositor.
+   Without it, the .mq-inner (will-change:transform, so it's a composited layer)
+   can render past the overflow:hidden edge mid-scroll — the title "glitching
+   outside the box" when the notch expands. Paint containment nails it to the box. */
+.mq{overflow:hidden;white-space:nowrap;contain:paint}
 .mq-inner{display:inline-block;white-space:nowrap;max-width:none}
 .mq.mq-scroll .mq-inner{animation:mqScroll var(--mq-dur,10s) ease-in-out infinite;will-change:transform}
 /* Only while it's actually scrolling, feather the box edges so the text fades

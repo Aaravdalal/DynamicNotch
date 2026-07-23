@@ -20,6 +20,7 @@ let isDragActive = false;
 let isMouseOverNotch = false;
 let ignoreMouseLeave = false;
 let reenterGuard = false; // brief lockout so collapsing doesn't instantly re-expand
+let collapseTimeout = null; // hover-intent buffer so a quick mouse flick-out doesn't collapse
 let wasMsgMiniBeforeExpand = false; // Track if we expanded from msg-mini state
 let lastMouseX = 0;
 let lastMouseY = 0;
@@ -319,6 +320,53 @@ function collapse() {
   decideState();
 }
 
+// ─── Hover-intent collapse ───
+// A quick flick of the cursor off the notch and straight back used to fire a
+// full collapse→expand cycle mid-transition, so wiggling in/out a few times made
+// the notch jitter between sizes. Instead of collapsing the instant the mouse
+// leaves, arm a short timer; any re-entry cancels it, so a genuine exit still
+// collapses (~70ms later, imperceptible) but a wiggle just keeps it open.
+function cancelPendingCollapse() {
+  if (collapseTimeout) { clearTimeout(collapseTimeout); collapseTimeout = null; }
+}
+
+function commitCollapse() {
+  collapseTimeout = null;
+  if (!isExpanded) return;
+  // If we expanded from msg-mini state, return to msg-mini instead of idle
+  if (currentState === 'msg-expanded' && wasMsgMiniBeforeExpand) {
+    currentState = 'msg-mini';
+    wasMsgMiniBeforeExpand = false;
+  }
+  if (currentState === 'unreads') currentState = 'idle';
+  collapse();
+  if (currentState === 'idle') {
+    reenterGuard = true;
+    setTimeout(() => { reenterGuard = false; }, 80);
+  }
+}
+
+function scheduleCollapse() {
+  if (collapseTimeout) return;
+  collapseTimeout = setTimeout(commitCollapse, 70);
+}
+
+// ─── Wide music dashboard (opened from the mini-player caret) ───
+// Opening/closing it springs the notch between the compact 370px player and the
+// 820px dashboard. The incoming panel is laid out at the full width, so if it's
+// revealed while the notch is still narrow its contents reflow and "stretch" as
+// the notch grows. Hide the panels for the length of the resize (via .resizing-full)
+// and fade the correct one in once the notch has essentially reached its size.
+let fullRevealTimer = null;
+function setMusicDashboard(open) {
+  if (open) { forcedPanel = 'panelIdle'; notch.classList.add('forced-full'); }
+  else { forcedPanel = null; notch.classList.remove('forced-full'); }
+  notch.classList.add('resizing-full');
+  showActivePanel();
+  clearTimeout(fullRevealTimer);
+  fullRevealTimer = setTimeout(() => notch.classList.remove('resizing-full'), 300);
+}
+
 /* ─── Camera notch ─── */
 let camStream = null;
 let camZoom = 1;
@@ -394,6 +442,8 @@ function scheduleExpand() {
 }
 
 function handleNotchEnter() {
+  // The mouse is back over the notch — kill any pending collapse from a flick-out.
+  cancelPendingCollapse();
   // Brief lockout after a collapse so the notch doesn't instantly re-expand
   // while the pointer is still sitting over the (now smaller) collapsed pill.
   if (reenterGuard) return;
@@ -449,19 +499,9 @@ function handleNotchLeave() {
   if (ignoreMouseLeave) return;
 
   if (isExpanded) {
-    // If we expanded from msg-mini state, return to msg-mini instead of idle
-    if (currentState === 'msg-expanded' && wasMsgMiniBeforeExpand) {
-      currentState = 'msg-mini';
-      wasMsgMiniBeforeExpand = false;
-    }
-    if (currentState === 'unreads') {
-      currentState = 'idle';
-    }
-    collapse();
-    if (currentState === 'idle') {
-      reenterGuard = true;
-      setTimeout(() => { reenterGuard = false; }, 80);
-    }
+    // Debounced so a quick out-and-back-in cancels the collapse (see
+    // scheduleCollapse) instead of firing a full collapse→expand cycle.
+    scheduleCollapse();
   } else {
     // Determine if mouse is over the collapsed notch
     const elementUnderMouse = document.elementFromPoint(lastMouseX, lastMouseY);
@@ -539,6 +579,9 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
     const inBounds = isMouseOverNotchBounds(e, isExpanded);
+    // Any movement that lands inside the notch cancels a pending collapse, so a
+    // wiggle that never fully leaves keeps the panel open (see scheduleCollapse).
+    if (inBounds) cancelPendingCollapse();
     if (inBounds && !isMouseOverNotch) handleNotchEnter();
     else if (!inBounds && isMouseOverNotch) handleNotchLeave();
     // Safety net: hovering the collapsed notch must always expand it, even if
@@ -563,6 +606,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       lastMouseY = y;
       if (isMouseOverNotchBounds({ clientX: x, clientY: y }, true)) {
         isMouseOverNotch = true;
+        cancelPendingCollapse();
       } else {
         handleNotchLeave();
       }
@@ -749,9 +793,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   if (queueBtn) {
     queueBtn.addEventListener('click', e => {
       e.stopPropagation();
-      forcedPanel = 'panelIdle';
-      notch.classList.add('forced-full');
-      showActivePanel();
+      setMusicDashboard(true);
     });
   }
 
@@ -834,11 +876,9 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     dashChevronBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (currentState === 'music') {
-        // When music is playing, always open the music panel in expanded notch
-        // (replaces idle panel with notifications/calendar)
-        forcedPanel = null;
-        notch.classList.remove('forced-full');
-        showActivePanel();
+        // Music playing: collapse the wide dashboard back to the compact player
+        // without the reverse reflow-stretch.
+        setMusicDashboard(false);
       } else {
         collapse();
       }
