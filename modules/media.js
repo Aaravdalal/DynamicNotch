@@ -228,21 +228,31 @@ class MediaMonitor extends EventEmitter {
 
 const monitor = new MediaMonitor();
 
-let mediaPs = null;
-function getMediaPs() {
-    if (!mediaPs) {
-        mediaPs = spawn('powershell', ['-NoProfile', '-Command', '-'], { windowsHide: true });
-        mediaPs.stdin.write(`Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class K{[DllImport("user32.dll")]public static extern void keybd_event(byte b,byte s,uint f,UIntPtr e);}'\n`);
+// Persistent PowerShell daemon that controls the CURRENT SMTC session directly.
+// Replaces the old global-media-key approach (keybd_event VK_MEDIA_*), which was
+// unreliable — the keys went to whatever app held media-key focus, not the
+// session shown in the notch, so play/pause/next/prev often did nothing or hit
+// the wrong app. Session control targets exactly what we're displaying.
+let controlPs = null;
+function getControlPs() {
+    if (!controlPs) {
+        const scriptPath = path.join(__dirname, '..', 'scripts', 'media-control.ps1');
+        controlPs = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
+        controlPs.on('close', () => { controlPs = null; });
+        controlPs.on('error', () => { controlPs = null; });
+        if (controlPs.stderr) controlPs.stderr.on('data', () => {});
     }
-    return mediaPs;
+    return controlPs;
 }
 
-async function controlMedia(action) {
-    const keyMap = { playpause: 'B3', next: 'B0', prev: 'B1' };
-    const vk = keyMap[action];
-    if (!vk) return;
-    const ps = getMediaPs();
-    ps.stdin.write(`$key=[Convert]::ToByte('${vk}',16); [K]::keybd_event($key, 0, 1, [UIntPtr]::Zero); Start-Sleep -Milliseconds 50; [K]::keybd_event($key, 0, 3, [UIntPtr]::Zero);\n`);
+function controlMedia(action) {
+    if (!['playpause', 'play', 'pause', 'next', 'prev'].includes(action)) return;
+    try {
+        getControlPs().stdin.write(action + '\n');
+    } catch (e) {
+        controlPs = null; // pipe broke — it'll respawn on the next press
+        console.error('controlMedia error:', e.message);
+    }
 }
 
 // Seek the current SMTC session to positionMs. One-shot PowerShell — a little
@@ -260,7 +270,10 @@ module.exports = {
     getMediaInfo: () => monitor.getMediaInfo(),
     controlMedia,
     seekMedia,
-    destroyMediaMonitor: () => monitor.destroy(),
+    destroyMediaMonitor: () => {
+        monitor.destroy();
+        if (controlPs) { try { controlPs.stdin.end(); controlPs.kill(); } catch (e) {} controlPs = null; }
+    },
     onMediaUpdate: (cb) => {
         monitor.on('update', cb);
         // If already playing, emit the current state immediately to the new listener

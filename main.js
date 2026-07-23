@@ -7,10 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const { getMediaInfo, controlMedia, seekMedia } = require('./modules/media');
 const googleCalendar = require('./modules/google-calendar');
-const { getRecordingStatus } = require('./modules/recording');
 const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
 const { initFileTray } = require('./modules/file-tray');
-const { startExternalTimersMonitor } = require('./modules/external-timers');
 const { startDownloadsMonitor } = require('./modules/downloads');
 const { startHeartbeat } = require('./modules/heartbeat');
 const { startForegroundMonitor, getLastForegroundApp } = require('./modules/foreground-app');
@@ -192,9 +190,8 @@ function createWindow() {
     safeSend('battery-update', batState);
   });
 
-  startExternalTimersMonitor((data) => {
-    safeSend('external-timer-update', data);
-  });
+  // External-timers / mic-recording monitor removed — the recording notch was
+  // scrapped and external timers were already ignored by the renderer.
 
   startDownloadsMonitor((data) => {
     safeSend('download-update', data);
@@ -410,18 +407,7 @@ ipcMain.handle('seek-media', async (_, positionMs) => {
 
 ipcMain.handle('set-sys-val', async (_, type, val) => {
   try {
-    if (type === 'toggleRec') {
-      const scriptPath = path.join(__dirname, 'scripts', 'control-recorder.ps1');
-      spawn('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-File', scriptPath, 'Pause'], { windowsHide: true });
-    } else if (type === 'stopRec') {
-      const scriptPath = path.join(__dirname, 'scripts', 'control-recorder.ps1');
-      spawn('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-File', scriptPath, 'Stop'], { windowsHide: true });
-    } else if (type === 'toggleChromeTimer') {
-      const { sendTimerCommand } = require('./modules/external-timers');
-      sendTimerCommand('toggleChrome');
-    } else {
-      spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
-    }
+    spawnTracked(path.join(__dirname, 'scripts', 'sys-monitor.exe'), [type, val.toString()]);
   } catch (e) {}
   return true;
 });
@@ -431,10 +417,6 @@ ipcMain.handle('simulate-win-h', async () => {
     require('child_process').execFile(path.join(__dirname, 'scripts', 'sys-monitor.exe'), ['winH']);
   } catch (e) {}
   return true;
-});
-
-ipcMain.handle('get-recording', async () => {
-  try { return await getRecordingStatus(); } catch (e) { return { recording: false }; }
 });
 
 ipcMain.handle('start-speech-recognition', async () => {

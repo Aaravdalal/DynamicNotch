@@ -6,7 +6,6 @@ let isExpanded = false;
 let hoverTimeout = null;
 let currentState = 'idle';
 let mediaData = { playing: false };
-let recordingData = { recording: false };
 let wasCharging = null;
 let showedLowBattery = false;
 let battToastTimeout = null;
@@ -37,103 +36,16 @@ let alarmActive = false; // timer has fired and is ringing until dismissed
 const notch = document.getElementById('notch');
 const collapsedView = document.getElementById('collapsedView');
 
-// --- External monitor events (mic / recording) ---
-window.notchAPI.onExternalTimerUpdate((data) => {
-  // The timer notch is driven solely by the notch's own timer picker. Timers
-  // running elsewhere (a "timer" Google search, the Focus/Clock app) are ignored
-  // outright — they used to take over the notch, and their polling would resync
-  // or cancel a timer set here. Mic/recording events below still flow through.
-  if (data.type === 'chrome' || data.type === 'focus' || data.type === 'none_timer') {
-    return;
-  } else if (data.type === 'mic_active') {
-    // Don't show recording panel for voice search
-    if (isVoiceSearchActive) return;
-    
-    const was = recordingData.recording;
-    const wasPaused = recordingData.state === 'PAUSED';
-    
-    if (!was || wasPaused) {
-      recordingData.recording = true;
-      recordingData.state = 'ACTIVE';
-      // If we weren't already recording, reset elapsed time
-      if (!was) {
-        recordingData.elapsed = 0;
-      }
-      recordingData.startTime = Date.now() - (recordingData.elapsed || 0);
-      decideState();
-      
-      if (!recordingData.interval) {
-        recordingData.interval = setInterval(() => {
-          if (!recordingData.recording || recordingData.state === 'PAUSED') return;
-          const elapsed = Date.now() - recordingData.startTime;
-          recordingData.elapsed = elapsed;
-          
-          const ms = elapsed % 1000;
-          const s = Math.floor(elapsed / 1000) % 60;
-          const m = Math.floor(elapsed / 60000) % 60;
-          
-          const mStr = String(m).padStart(2, '0');
-          const sStr = String(s).padStart(2, '0');
-          const msStr = String(Math.floor(ms / 10)).padStart(2, '0');
-          const timeStr = `${mStr}:${sStr}.${msStr}`;
-          
-          recordingData.timeStr = timeStr;
-          document.getElementById('expRecTime').textContent = timeStr;
-          document.getElementById('cRecTime').textContent = timeStr;
-        }, 50);
-      }
-    }
-    
-    const wave = document.getElementById('pillRecWave');
-    if (wave) wave.style.opacity = '1';
-    const pauseBtn = document.getElementById('recPauseBtn');
-    if (pauseBtn) pauseBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
-    
-  } else if (data.type === 'mic_paused') {
-    // Don't process if voice search was active
-    if (isVoiceSearchActive) return;
-    
-    if (!recordingData.recording) {
-       // if we caught a paused state but weren't recording before, just initialize it
-       recordingData.recording = true;
-       recordingData.elapsed = 0;
-       recordingData.timeStr = "00:00.00";
-    }
-    recordingData.state = 'PAUSED';
-    if (recordingData.interval) {
-      clearInterval(recordingData.interval);
-      recordingData.interval = null;
-    }
-    
-    document.getElementById('expRecTime').textContent = recordingData.timeStr;
-    document.getElementById('cRecTime').textContent = recordingData.timeStr;
-    const wave = document.getElementById('pillRecWave');
-    if (wave) wave.style.opacity = '0.3';
-    const pauseBtn = document.getElementById('recPauseBtn');
-    if (pauseBtn) pauseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
-    
-    decideState();
-  } else if (data.type === 'mic_inactive') {
-    // Don't process if voice search was active
-    if (isVoiceSearchActive) return;
-    
-    if (recordingData.recording) {
-      recordingData.recording = false;
-      if (recordingData.interval) {
-        clearInterval(recordingData.interval);
-        recordingData.interval = null;
-      }
-      decideState();
-    }
-  }
-});
+// The recording notch was scrapped — the notch no longer reacts to other apps
+// using the microphone. External timers (a "timer" Google search, the Focus
+// app) were already ignored, so there's nothing left to listen for. Voice
+// search in the dashboard search bar is a separate feature and still works.
 
 /* ─── Panel map ─── */
 const panelMap = {
   idle:            'panelIdle',
   hover:           'panelHoverToggles',
   music:           'panelMusic',
-  recording:       'panelRecording',
   timer:           'panelTimer',
   charging:        'panelCharging',
   unplugged:       'panelUnplugged',
@@ -251,8 +163,7 @@ function decideState() {
   if (currentState === 'msg-mini' || currentState === 'msg-expanded' || currentState === 'unreads' || currentState === 'startup') return; // Protect message and startup states
 
   let s = 'idle';
-  if (recordingData.recording) s = 'recording';
-  else if (isTimerActive) s = 'timer';
+  if (isTimerActive) s = 'timer';
   // Only take over the collapsed pill — never hijack an already-expanded panel.
   else if (downloadActive && !isExpanded) s = 'download';
   // Use the specific toast state — a generic 'battery' has no panel in
@@ -264,7 +175,7 @@ function decideState() {
   setState(s);
 
   // A running timer keeps its full panel (pause / ✕ / countdown) on screen.
-  if (s === 'recording' || s === 'timer') {
+  if (s === 'timer') {
     if (!isExpanded) expand();
   }
 
@@ -283,7 +194,7 @@ function expand() {
 
 function collapse() {
   if (!isExpanded) return;
-  if (currentState === 'recording' || currentState === 'startup') return; // Force keep expanded
+  if (currentState === 'startup') return; // Force keep expanded during boot animation
   if (alarmActive) return; // Ringing timer stays open so the ✕ is always reachable
   if (currentState === 'timer' && isTimerActive) return; // Running timer keeps its full panel
   // A widget mid-turn has a card lifted to position:absolute with pending timers
@@ -484,7 +395,6 @@ function handleNotchLeave() {
   if (holdsFocus(document.getElementById('msgReplyInput'))) return;
   if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
   if (currentState === 'file-tray' && isDragActive) return;
-  if (currentState === 'recording') return;
   if (currentState === 'camera') return; // Camera stays open until explicitly closed
   if (alarmActive) return; // Ringing timer stays open until dismissed
   // Tasks / timer picker close via their own buttons — a stray mouse drift while
@@ -763,9 +673,24 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     }
     
     if (!controlledIframe) {
-      // Use system media keys for background Chrome tabs or Spotify
-      window.notchAPI.controlMedia(action);
-      if (action === 'playpause') isLocalPaused = !isLocalPaused;
+      const isYouTube = mediaData && mediaData.source === 'YouTube';
+      if (isYouTube && (action === 'next' || action === 'prev')) {
+        // A YouTube video has no "tracks" — the skip buttons are ±10s seeks.
+        // Seek the SMTC session relative to where we are now, and move the
+        // scrubber optimistically (it re-syncs to the real position next tick).
+        const dur = musicDuration || (mediaData.durationMs || 0) / 1000;
+        let target = currentElapsed() + (action === 'next' ? 10 : -10);
+        target = Math.max(0, dur > 0 ? Math.min(dur, target) : target);
+        window.notchAPI.seekMedia(Math.round(target * 1000));
+        posBaseSec = target;
+        posBaseAt = Date.now();
+        if (dur > 0) updateScrubberUI((target / dur) * 100, target, dur);
+      } else {
+        // Play/pause (and track skip for Spotify/Apple Music) on the real SMTC
+        // session — routed through direct session control, not global media keys.
+        window.notchAPI.controlMedia(action);
+        if (action === 'playpause') isLocalPaused = !isLocalPaused;
+      }
     }
     
     if (action === 'playpause') {
@@ -819,44 +744,10 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   // save to Liked Songs (music) or open PiP (YouTube video).
 
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
-  if(pStar) pStar.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const hasVideo = hasPipVideo();
-    if (hasVideo) {
-      // Open PiP Notch Player
-      forcedPanel = null;
-      notch.classList.remove('forced-full');
-      currentState = 'video';
-      notch.setAttribute('data-state', 'video');
-      showActivePanel();
-      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
-    } else {
-      // Music (no video): save/unsave the song in the Liked Songs playlist.
-      const liked = toggleLikedSong();
-      applyStarFill(document.getElementById('shuffleBtn'), liked);
-      applyStarFill(document.getElementById('dashStarBtn'), liked);
-    }
-  });
+  if(pStar) pStar.addEventListener('click', (e) => { e.stopPropagation(); handleStarClick(); });
 
   const dStar = document.getElementById('dashStarBtn'); // dashMusic star
-  if(dStar) dStar.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const hasVideo = hasPipVideo();
-    if (hasVideo) {
-      // Open PiP Notch Player
-      forcedPanel = null;
-      notch.classList.remove('forced-full');
-      currentState = 'video';
-      notch.setAttribute('data-state', 'video');
-      showActivePanel();
-      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
-    } else {
-      // Music (no video): save/unsave the song in the Liked Songs playlist.
-      const liked = toggleLikedSong();
-      applyStarFill(document.getElementById('shuffleBtn'), liked);
-      applyStarFill(document.getElementById('dashStarBtn'), liked);
-    }
-  });
+  if(dStar) dStar.addEventListener('click', (e) => { e.stopPropagation(); handleStarClick(); });
 
   // Call updateStarButtons initially and whenever mediaData changes
   // We'll call it from updateMusicUI
@@ -1848,34 +1739,79 @@ function applyStarFill(btn, liked) {
   btn.title = liked ? 'Remove from Liked Songs' : 'Add to Liked Songs';
 }
 
+const STAR_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+const PIP_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+
+// Keep the two star/PiP buttons in sync with the current track. Only rebuild the
+// glyph when it actually switches between star and PiP (tracked via dataset) —
+// the old code re-wrote the SVG on every media poll, which churned the element
+// a click could land on and made the fill flicker. Otherwise just recolour.
 function updateStarButtons() {
     const hasVideo = hasPipVideo();
-    const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
-    const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-
     const liked = isSongLiked();
     [document.getElementById('shuffleBtn'), document.getElementById('dashStarBtn')].forEach(btn => {
       if (!btn) return;
-      const svg = btn.querySelector('svg');
-      if (!svg) return;
+      const wantType = hasVideo ? 'pip' : 'star';
+      if (btn.dataset.iconType !== wantType) {
+        btn.innerHTML = hasVideo ? PIP_SVG : STAR_SVG;
+        btn.dataset.iconType = wantType;
+      }
       if (hasVideo) {
-        svg.outerHTML = pipSvg;
         btn.style.color = 'rgba(255,255,255,0.5)';
         btn.title = 'Play in Notch PiP';
       } else {
-        svg.outerHTML = starSvg;
-        applyStarFill(btn, liked); // fills if the current song is saved
+        applyStarFill(btn, liked); // fills solid green if the current song is saved
       }
     });
   }
+
+// Shared star/PiP click behaviour for both the panel-music and dashboard buttons.
+// YouTube video → open the PiP player; anything else → toggle the Liked Songs
+// playlist and pop the star so the save is obviously registered.
+function handleStarClick() {
+  if (hasPipVideo()) {
+    forcedPanel = null;
+    notch.classList.remove('forced-full');
+    currentState = 'video';
+    notch.setAttribute('data-state', 'video');
+    showActivePanel();
+    openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+    return;
+  }
+  const liked = toggleLikedSong();
+  [document.getElementById('shuffleBtn'), document.getElementById('dashStarBtn')].forEach(b => {
+    if (!b) return;
+    applyStarFill(b, liked);
+    b.style.transform = 'scale(1.28)';
+    setTimeout(() => { b.style.transform = ''; }, 160);
+  });
+}
   
+// YouTube in the notch has no track list — its skip buttons do ±10s seeks — so
+// swap the track-skip glyphs for replay-10 / forward-10 to match the behaviour.
+// (Official Material replay_10 / forward_10 paths.)
+function updateSkipButtons() {
+  const isYouTube = mediaData && mediaData.source === 'YouTube';
+  const back10 = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8zm-1.1 11H10v-3.3L9 13v-.7l1.8-.6h.1V16zm4.28-1.24c0 .32-.03.6-.1.82s-.17.42-.29.57-.28.26-.45.33-.37.1-.59.1-.41-.03-.59-.1-.33-.18-.46-.33-.23-.34-.3-.57-.11-.5-.11-.82v-.74c0-.32.03-.6.1-.82s.17-.42.29-.57.28-.26.45-.33.37-.1.59-.1.41.03.59.1.33.18.46.33.23.34.3.57.11.5.11.82v.74zm-.85-.86c0-.19-.01-.35-.04-.48s-.07-.23-.12-.31-.11-.14-.19-.17-.16-.05-.25-.05-.18.02-.25.05-.14.09-.19.17-.09.18-.12.31-.04.29-.04.48v.97c0 .19.01.35.04.48s.07.24.12.32.11.14.19.17.16.05.25.05.18-.02.25-.05.14-.09.19-.17.09-.19.11-.32.04-.29.04-.48v-.97z"/></svg>';
+  const fwd10 = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 13c0 3.31-2.69 6-6 6s-6-2.69-6-6 2.69-6 6-6v4l5-5-5-5v4c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8h-2zm-6.7 3H10v-3.3L9 13v-.7l1.8-.6h.1V16zm4.28-1.24c0 .32-.03.6-.1.82s-.17.42-.29.57-.28.26-.45.33-.37.1-.59.1-.41-.03-.59-.1-.33-.18-.46-.33-.23-.34-.3-.57-.11-.5-.11-.82v-.74c0-.32.03-.6.1-.82s.17-.42.29-.57.28-.26.45-.33.37-.1.59-.1.41.03.59.1.33.18.46.33.23.34.3.57.11.5.11.82v.74zm-.85-.86c0-.19-.01-.35-.04-.48s-.07-.23-.12-.31-.11-.14-.19-.17-.16-.05-.25-.05-.18.02-.25.05-.14.09-.19.17-.09.18-.12.31-.04.29-.04.48v.97c0 .19.01.35.04.48s.07.24.12.32.11.14.19.17.16.05.25.05.18-.02.25-.05.14-.09.19-.17.09-.19.11-.32.04-.29.04-.48v-.97z"/></svg>';
+  const prevSkip = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
+  const nextSkip = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>';
+  [document.getElementById('prevBtn'), document.getElementById('dashPrevBtn')].forEach(b => {
+    if (b) { b.innerHTML = isYouTube ? back10 : prevSkip; b.title = isYouTube ? 'Back 10 seconds' : 'Previous'; }
+  });
+  [document.getElementById('nextBtn'), document.getElementById('dashNextBtn')].forEach(b => {
+    if (b) { b.innerHTML = isYouTube ? fwd10 : nextSkip; b.title = isYouTube ? 'Forward 10 seconds' : 'Next'; }
+  });
+}
+
   function updateMusicUI() {
   const coverImg = document.getElementById('coverImg');
   const placeholder = document.getElementById('albumPlaceholder');
   const cAlbum = document.getElementById('cAlbumImg');
 
-  // Update star/PiP buttons based on whether a YouTube video is available
+  // Update star/PiP + skip buttons based on whether a YouTube video is playing.
   updateStarButtons();
+  updateSkipButtons();
 
   if (mediaData.playing || mediaData.paused) {
     const track = mediaData.track || mediaData.title;
@@ -1975,8 +1911,11 @@ function updateStarButtons() {
   }
 }
 
+// Real system-audio level (0..100) from the WASAPI peak meter, refreshed ~20x/s
+// via onAudioPeak. The loop below turns it into moving bars.
 let lastKnownPeak = 0;
 let visualizerFrame = null;
+let barLevels = []; // per-bar smoothed 0..1 heights, so bars fall/rise independently
 
 function startVisualizer() {
   if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
@@ -1986,8 +1925,9 @@ function startVisualizer() {
 function stopVisualizer() {
   if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
   visualizerFrame = null;
+  barLevels = [];
   document.querySelectorAll('.equalizer span, .c-eq span').forEach(s => {
-    s.style.height = s.parentElement.classList.contains('equalizer') ? '4px' : '3px';
+    s.style.height = s.parentElement.classList.contains('equalizer') ? '3px' : '2px';
   });
 }
 
@@ -1998,79 +1938,45 @@ function visualizerLoop() {
   }
 
   const spans = document.querySelectorAll('.equalizer span, .c-eq span');
+  if (barLevels.length !== spans.length) barLevels = new Array(spans.length).fill(0);
   const now = Date.now();
-  
-  // Use lastKnownPeak, decaying slowly if no update received
-  lastKnownPeak *= 0.92; 
-  if (lastKnownPeak < 0.1) lastKnownPeak = 0;
+
+  // Normalise the real peak into 0..1 with a mild boost so ordinary listening
+  // levels drive most of the bar range, then let it decay each frame so the
+  // bars visibly drop when the track quietens between the ~50ms peak updates.
+  const level = Math.min(1, (lastKnownPeak / 100) * 1.7);
+  lastKnownPeak *= 0.86;
+  if (lastKnownPeak < 0.4) lastKnownPeak = 0;
 
   spans.forEach((s, idx) => {
     const isBig = s.parentElement.classList.contains('equalizer');
-    const maxH = isBig ? 24 : 12;
-    const minH = isBig ? 4 : 3;
-    
-    const randomOffset = Math.sin(now / 100 + idx * 2) * 0.5 + 0.5;
-    const barPeak = lastKnownPeak * (0.3 + 0.7 * randomOffset);
-    const peakContribution = (barPeak / 100) * (maxH - minH);
-    const targetH = Math.max(minH, minH + peakContribution);
-    
-    s.style.height = targetH + 'px';
-    // Faster transition for accurate data
-    s.style.transition = 'height 0.05s linear';
+    const maxH = isBig ? 22 : 12;
+    const minH = isBig ? 3 : 2;
+
+    // Shape the single overall level into a per-bar target with a slow wobble,
+    // so the bars dance independently like a spectrum instead of moving as one
+    // solid block. Silence ⇒ all bars flat; louder ⇒ taller and livelier.
+    const wob = 0.5 + 0.5 * Math.sin(now / 95 + idx * 1.7) * Math.sin(now / 220 + idx * 0.6);
+    const target = level * Math.max(0, wob);
+
+    // Fast attack (jump up on a beat), slower release (fall smoothly) — the
+    // natural VU/spectrum feel that reads as "reacting to the music".
+    const cur = barLevels[idx];
+    barLevels[idx] = target > cur ? target : cur * 0.82 + target * 0.18;
+
+    s.style.height = (minH + barLevels[idx] * (maxH - minH)).toFixed(1) + 'px';
+    s.style.transition = 'height 0.06s linear';
   });
 
   visualizerFrame = requestAnimationFrame(visualizerLoop);
 }
 
+// Attack: jump straight to a louder peak; the loop handles the decay/release.
 function updateVisualizerWithPeak(peak) {
   if (peak > lastKnownPeak) lastKnownPeak = peak;
-  else lastKnownPeak = (lastKnownPeak * 0.7) + (peak * 0.3);
 }
 
-let lastKnownMicPeak = 0;
-let micVisualizerFrame = null;
-
-function micVisualizerLoop() {
-  const spans = document.querySelectorAll('#pillRecWave span.wb');
-  if (!spans || spans.length === 0) return;
-  
-  if (recordingData.recording && recordingData.state !== 'PAUSED') {
-    const now = Date.now();
-    lastKnownMicPeak *= 0.85; // Faster decay for mic
-    if (lastKnownMicPeak < 0.1) lastKnownMicPeak = 0;
-
-    spans.forEach((s, idx) => {
-      const maxH = 14;
-      const minH = 3;
-      
-      const randomOffset = Math.sin(now / 80 + idx * 3) * 0.5 + 0.5;
-      const barPeak = lastKnownMicPeak * (0.4 + 0.6 * randomOffset);
-      const peakContribution = (barPeak / 100) * (maxH - minH);
-      const targetH = minH + peakContribution;
-      
-      s.style.height = targetH + 'px';
-      s.style.transition = 'height 0.05s linear';
-    });
-  } else {
-    // If not recording or paused, make them flat
-    spans.forEach(s => {
-      s.style.height = '3px';
-      s.style.transition = 'height 0.1s linear';
-    });
-  }
-  
-  micVisualizerFrame = requestAnimationFrame(micVisualizerLoop);
-}
-// Start it immediately, it will idle nicely
-micVisualizerLoop();
-
-function updateMicVisualizerWithPeak(peak) {
-  // Boost mic peak slightly for better visuals
-  let boosted = peak * 1.5;
-  if (boosted > 100) boosted = 100;
-  if (boosted > lastKnownMicPeak) lastKnownMicPeak = boosted;
-  else lastKnownMicPeak = (lastKnownMicPeak * 0.5) + (boosted * 0.5);
-}
+// (Mic waveform visualizer removed along with the recording notch.)
 
 let musicDuration = 0;
 let musicElapsed = 0;
@@ -2556,10 +2462,6 @@ function setupUnreads() {
     }
   }, { passive: false });
 }
-async function fetchRecording() {
-  // Handled by external-timers now.
-}
-
 /* ─── Init ─── */
   document.addEventListener('DOMContentLoaded', () => {
   setupInteractions();
@@ -2587,27 +2489,9 @@ async function fetchRecording() {
 
   setupTasksPanel();
   setupTimerPicker();
-  
-  // Hook up Recording buttons (Visual & IPC)
-  const recPauseBtn = document.getElementById('recPauseBtn');
-  if (recPauseBtn) {
-    recPauseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      window.notchAPI.setSysVal('toggleRec', 'true');
-    });
-  }
-  const recStopBtn = document.getElementById('recStopBtn');
-  if (recStopBtn) {
-    recStopBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      window.notchAPI.setSysVal('stopRec', 'true');
-    });
-  }
 
   fetchCalendar();
-  setTimeout(fetchRecording, 2000);
   setInterval(fetchCalendar, 10000);
-  setInterval(fetchRecording, 3000);
   updateMusicUI();
 
   if (window.notchAPI.onBatteryUpdate) {
@@ -2623,10 +2507,6 @@ async function fetchRecording() {
   });
   window.notchAPI.onAudioPeak((peak) => {
     updateVisualizerWithPeak(peak);
-  });
-  
-  window.notchAPI.onMicPeak((peak) => {
-    updateMicVisualizerWithPeak(peak);
   });
 
   // Unread messages carousel (paired device)
