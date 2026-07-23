@@ -680,6 +680,20 @@ html, body {
 .dash-title{font-size:16px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
 .dash-artist{font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dash-album{display:none}
+
+/* ─── Scrolling song titles (marquee) ───
+   When a title is too long for its box it eases left to reveal the end, holds,
+   then eases back — instead of a static ellipsis. Only applied (via .mq-scroll,
+   added by JS) when the text actually overflows; short titles stay put. The
+   inner span is what moves; the container already clips with overflow:hidden. */
+.mq{overflow:hidden;white-space:nowrap}
+.mq-inner{display:inline-block;white-space:nowrap;max-width:none}
+.mq.mq-scroll .mq-inner{animation:mqScroll var(--mq-dur,10s) ease-in-out infinite;will-change:transform}
+@keyframes mqScroll{
+  0%,12%   {transform:translateX(0)}
+  46%,58%  {transform:translateX(var(--mq-shift,0))}
+  92%,100% {transform:translateX(0)}
+}
 .dash-ctrls{display:flex;align-items:center;gap:16px;margin-top:6px}
 
 /* calendar col - compact */

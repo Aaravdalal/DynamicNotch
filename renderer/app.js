@@ -229,6 +229,10 @@ function showActivePanel() {
       dashFileTray.style.display = 'none';
     }
   }
+
+  // A title set while its panel was hidden couldn't be measured; now that the
+  // panel is shown, re-check whether it needs to scroll.
+  requestAnimationFrame(refreshMarquees);
 }
 
 function setState(s) {
@@ -281,6 +285,11 @@ function collapse() {
   if (currentState === 'recording' || currentState === 'startup') return; // Force keep expanded
   if (alarmActive) return; // Ringing timer stays open so the ✕ is always reachable
   if (currentState === 'timer' && isTimerActive) return; // Running timer keeps its full panel
+  // A widget mid-turn has a card lifted to position:absolute with pending timers
+  // up to ~600ms out. Collapsing under that left the pinned card hanging out of
+  // the shrunken notch — the "big laggy black notch" — until the timers fired.
+  // Snap the carousel back to rest so the notch collapses clean.
+  resetWidgetTurn();
   isExpanded = false;
   forcedPanel = null; // Reset pin
   notch.style.height = ''; // Drop any panel-driven height (tasks / expanded message)
@@ -432,6 +441,11 @@ function handleNotchLeave() {
   // typing a task or spinning a wheel must not throw the panel away.
   if (currentState === 'tasks' || currentState === 'timer-setup') return;
   if (isDraggingSlider) return; // Don't collapse while dragging the vol/bright slider
+  // The volume/brightness HUD and the DND toast own the notch and dismiss
+  // themselves on a timer. Expanding the slider makes the notch interactive, so
+  // a stray mouse-leave here used to collapse it a frame after it appeared —
+  // the flicker where the HUD vanished instead of holding over the song.
+  if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return;
   if (ignoreMouseLeave) return;
 
   if (isExpanded) {
@@ -1836,14 +1850,11 @@ function updateStarButtons() {
 
   if (mediaData.playing || mediaData.paused) {
     const track = mediaData.track || mediaData.title;
-    const songTitle = document.getElementById('songTitle');
-    if (songTitle) songTitle.textContent = track;
+    setScrollingTitle(document.getElementById('songTitle'), track);
     const songArtist = document.getElementById('songArtist');
     if (songArtist) songArtist.textContent = mediaData.artist ? `By: ${mediaData.artist}` : '';
-    const cSongTitle = document.getElementById('cSongTitle');
-    if (cSongTitle) cSongTitle.textContent = mediaData.artist ? `${track} - By: ${mediaData.artist}` : track;
-    const dashSongTitle = document.getElementById('dashSongTitle');
-    if (dashSongTitle) dashSongTitle.textContent = track;
+    setScrollingTitle(document.getElementById('cSongTitle'), mediaData.artist ? `${track} - By: ${mediaData.artist}` : track);
+    setScrollingTitle(document.getElementById('dashSongTitle'), track);
     const dashSongArtist = document.getElementById('dashSongArtist');
     if (dashSongArtist) dashSongArtist.textContent = mediaData.artist ? `By: ${mediaData.artist}` : '';
     const dashSongAlbum = document.getElementById('dashSongAlbum');
@@ -1903,14 +1914,11 @@ function updateStarButtons() {
       if (dashPh) dashPh.style.display = 'flex';
     }
   } else {
-    const songTitle = document.getElementById('songTitle');
-    if (songTitle) songTitle.textContent = 'Not Playing';
+    setScrollingTitle(document.getElementById('songTitle'), 'Not Playing');
     const songArtist = document.getElementById('songArtist');
     if (songArtist) songArtist.textContent = 'No active media';
-    const cSongTitle = document.getElementById('cSongTitle');
-    if (cSongTitle) cSongTitle.textContent = '';
-    const dashSongTitle = document.getElementById('dashSongTitle');
-    if (dashSongTitle) dashSongTitle.textContent = 'Not Playing';
+    setScrollingTitle(document.getElementById('cSongTitle'), '');
+    setScrollingTitle(document.getElementById('dashSongTitle'), 'Not Playing');
     const dashSongArtist = document.getElementById('dashSongArtist');
     if (dashSongArtist) dashSongArtist.textContent = 'No active media';
     const dashSongAlbum = document.getElementById('dashSongAlbum');
@@ -2069,6 +2077,56 @@ function animateProgress() {
 
     updateScrubberUI(fakePct, musicElapsed, musicDuration);
   }, 500);
+}
+
+/* ─── Scrolling song titles ─── */
+const MQ_TITLE_IDS = ['songTitle', 'dashSongTitle', 'cSongTitle'];
+
+// Decide whether a title element's text overflows its box and, if so, arm the
+// CSS scroll with a distance/duration matched to how much is hidden. Hidden
+// elements (clientWidth 0) are skipped and re-measured later when shown.
+function measureMarquee(el) {
+  if (!el) return;
+  const inner = el.querySelector('.mq-inner');
+  if (!inner) return;
+  if (el.clientWidth === 0) return; // not visible yet
+  const overflow = inner.scrollWidth - el.clientWidth;
+  if (overflow > 6) {
+    const dur = Math.min(16, Math.max(7, 5 + overflow / 25)); // seconds, longer text scrolls longer
+    el.style.setProperty('--mq-shift', (-overflow - 4) + 'px');
+    el.style.setProperty('--mq-dur', dur + 's');
+    el.classList.add('mq-scroll');
+  } else {
+    el.classList.remove('mq-scroll');
+    el.style.removeProperty('--mq-shift');
+    el.style.removeProperty('--mq-dur');
+  }
+}
+
+// Re-measure every title — used after a layout change (expand / panel swap) so a
+// title that was hidden when set now scrolls if it needs to.
+function refreshMarquees() {
+  MQ_TITLE_IDS.forEach(id => measureMarquee(document.getElementById(id)));
+}
+
+// Set a title's text and (re)arm its scroll. Skips the DOM rebuild when the text
+// is unchanged so the scroll animation isn't restarted on every media poll.
+function setScrollingTitle(el, text) {
+  if (!el) return;
+  const str = text == null ? '' : String(text);
+  if (el.dataset.mqText === str && el.querySelector('.mq-inner')) {
+    measureMarquee(el);
+    return;
+  }
+  el.dataset.mqText = str;
+  el.classList.add('mq');
+  el.classList.remove('mq-scroll');
+  const inner = document.createElement('span');
+  inner.className = 'mq-inner';
+  inner.textContent = str;
+  el.innerHTML = '';
+  el.appendChild(inner);
+  requestAnimationFrame(() => measureMarquee(el));
 }
 
 function updateScrubberUI(pct, elapsed, total) {
@@ -3443,6 +3501,25 @@ let lastWidgetRendered = null;
 
 function widgetEl(name) {
   return document.getElementById(name === 'weather' ? 'dashWeather' : 'dashStocks');
+}
+
+// Abort an in-progress carousel turn and snap both cards back to rest. Called
+// when the notch collapses so a half-finished swing can't leave a card pinned
+// (position:absolute) outside the shrunken notch.
+function resetWidgetTurn() {
+  if (!widgetTurning && wgtTimers.length === 0) return;
+  wgtTimers.forEach(clearTimeout);
+  wgtTimers = [];
+  ['weather', 'stocks'].forEach(name => {
+    const el = widgetEl(name);
+    if (!el) return;
+    el.classList.remove('wgt-turning', 'wgt-leaving', 'wgt-instant',
+                        'wgt-off-left', 'wgt-off-right', 'wgt-settled');
+    el.style.position = el.style.left = el.style.top = '';
+    el.style.width = el.style.height = el.style.zIndex = '';
+  });
+  widgetTurning = false;
+  renderWidgets(); // restore just the current widget, visible and settled
 }
 
 // Turn the carousel one step. dir > 0 advances (current exits left, next enters
