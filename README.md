@@ -21,9 +21,24 @@ Well, a LOT.You can:
 
 And the best part? I am constantly adding more stuff to it, making it better, and fixing bugs.
 
-## How to use it?
+## Install & run
 
-It is simple: download it from GitHub (the release) , and then run it in the terminal the exact command is npm install first and then npm start.
+Dynamic Notch is an Electron app, so you run it with Node. It takes about a minute:
+
+1. **Install Node.js** (LTS) from [nodejs.org](https://nodejs.org) — this gives you `node` and `npm`.
+2. **Get the code:** download this repo as a ZIP (green **Code** button → Download ZIP, or the source from the [latest release](https://github.com/Aaravdalal/DynamicNotch/releases/latest)) and unzip it.
+3. **Open a terminal in the folder** and install the dependencies:
+   ```
+   npm install
+   ```
+4. **Start the notch:**
+   ```
+   npm start
+   ```
+
+That's it — the notch appears at the top of your screen. To close it, quit the process in your terminal (Ctrl+C) or run `npm run kill`.
+
+> **Heads up:** there's no prebuilt `.exe` yet, so you do need Node.js for now. If you want to build a standalone installer, run `npm run build` (uses electron-builder).
 
 ## How to operate the notch?
 
