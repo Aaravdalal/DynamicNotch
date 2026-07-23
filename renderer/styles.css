@@ -689,6 +689,12 @@ html, body {
 .mq{overflow:hidden;white-space:nowrap}
 .mq-inner{display:inline-block;white-space:nowrap;max-width:none}
 .mq.mq-scroll .mq-inner{animation:mqScroll var(--mq-dur,10s) ease-in-out infinite;will-change:transform}
+/* Only while it's actually scrolling, feather the box edges so the text fades
+   in/out at the sides instead of hard-clipping against the notch. */
+.mq.mq-scroll{
+  -webkit-mask-image:linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image:linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
 @keyframes mqScroll{
   0%,12%   {transform:translateX(0)}
   46%,58%  {transform:translateX(var(--mq-shift,0))}
