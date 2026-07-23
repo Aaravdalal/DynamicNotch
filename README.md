@@ -23,7 +23,7 @@ And the best part? I am constantly adding more stuff to it, making it better, an
 
 ## How to use it?
 
-It is simple: download it from GitHub (the release) , and then run it in the terminal.
+It is simple: download it from GitHub (the release) , and then run it in the terminal the exact command is npm install first and then npm start.
 
 ## How to operate the notch?
 
