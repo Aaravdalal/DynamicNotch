@@ -151,23 +151,25 @@ function createWindow() {
     console.log(`[Renderer] ${message}`);
   });
 
-  // ─── Re-assert always-on-top periodically (prevents z-order loss) ───
-  alwaysOnTopInterval = setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver');
-      } catch (e) {}
-    }
-  }, 2000);
+  // ─── Keep the notch pinned to the very top ───
+  // Alt-tabbing activates another window, which Windows briefly floats above
+  // even topmost windows. Re-asserting topmost AND forcing the window back to
+  // the front of the z-order recovers it. A slow timer left a visible dip
+  // before recovery — poll fast so the notch never appears to fall behind.
+  // moveTop() is safe here because the window is non-focusable, so it can't
+  // steal activation from whatever the user just switched to.
+  const pinTop = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.moveTop();
+    } catch (e) {}
+  };
+  alwaysOnTopInterval = setInterval(pinTop, 300);
 
-  // Re-assert on focus events
-  mainWindow.on('blur', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver');
-      } catch (e) {}
-    }
-  });
+  // Re-assert the instant focus moves away (alt-tab, clicking another app).
+  mainWindow.on('blur', pinTop);
+  app.on('browser-window-focus', pinTop);
 
   mainWindow.on('show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -781,6 +783,11 @@ $unique | Select-Object name, path, icon | ConvertTo-Json -Depth 3
       try {
         mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
         mainWindow.setFocusable(!ignore);
+        // On Windows, setFocusable toggles WS_EX_NOACTIVATE, which knocks the
+        // window out of the topmost band — the notch would drop behind other
+        // windows until the 2s re-assert timer caught up, showing as a flicker.
+        // Re-assert topmost on the same tick so it never leaves the front.
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
       } catch (e) {}
     }
     if (ignore) stopCursorWatch(); else startCursorWatch();

@@ -4530,52 +4530,55 @@ function runStartupSequence() {
   const panel = document.getElementById('panelStartup');
   const intro = document.getElementById('startupIntro');
   const hello = document.getElementById('startupHello');
+  const introImg = document.getElementById('introImage');
 
   // Hide all other panels first
   hideAllPanels();
 
-  // Show startup panel manually (don't use showActivePanel — it resets height)
+  // Compose the banner while the notch is still invisible (`.boot` => opacity 0)
+  // so the first thing the user sees is the intro image — never an empty black
+  // notch. Size it with transitions off so it doesn't visibly grow from the
+  // collapsed pill; the reveal is a single clean opacity fade below.
   if (panel) {
     panel.style.display = 'flex';
     panel.style.opacity = '1';
   }
-
-  // Phase 1: Expand notch to banner size for the image
   notch.classList.remove('collapsed');
   notch.classList.add('expanded');
   isExpanded = true;
   window.notchAPI.setIgnoreMouse(false);
 
-  // Force the banner dimensions directly
-  requestAnimationFrame(() => {
-    notch.style.width = '800px';
-    notch.style.height = '200px';
-    notch.style.borderRadius = '0 0 32px 32px';
+  notch.style.transition = 'none';
+  notch.style.width = '800px';
+  notch.style.height = '200px';
+  notch.style.borderRadius = '0 0 32px 32px';
+  if (intro) { intro.style.transition = 'none'; intro.style.opacity = '1'; }
+  void notch.offsetHeight; // flush layout before re-enabling transitions
+  notch.style.transition = '';
+  if (intro) intro.style.transition = '';
 
-    // Phase 2: After a beat, play boot sound and fade in image
-    setTimeout(() => {
-      playAppleBootChime();
-      if (intro) intro.style.opacity = '1';
-    }, 320);
+  let started = false;
+  const startTimeline = () => {
+    if (started) return;
+    started = true;
 
-    // Phase 3: Fade out image
-    setTimeout(() => {
-      if (intro) intro.style.opacity = '0';
-    }, 3100);
+    // Phase 1: reveal the fully-composed banner in one clean fade — this is the
+    // first thing on screen, with the boot chime.
+    notch.classList.remove('boot');
+    playAppleBootChime();
 
-    // Phase 4: Shrink notch and play hello animation
+    // Phase 2: hold, then fade the intro image out.
+    setTimeout(() => { if (intro) intro.style.opacity = '0'; }, 2800);
+
+    // Phase 3: morph to the hello widget and play the hello animation.
     setTimeout(() => {
       if (intro) intro.style.display = 'none';
-
-      // Morph to widget-shaped notch for hello (wide and short)
       notch.style.width = '520px';
       notch.style.height = '140px';
       notch.style.borderRadius = '0 0 32px 32px';
 
-      // Show hello after the morph transition settles
       setTimeout(() => {
         if (hello) hello.style.opacity = '1';
-
         const lottieContainer = document.getElementById('lottieContainer');
         if (lottieContainer && window.lottie) {
           window.lottie.loadAnimation({
@@ -4587,37 +4590,38 @@ function runStartupSequence() {
           });
         }
       }, 420);
-    }, 3900);
+    }, 3600);
 
-    // Phase 5: Fade out hello, then show normal expanded notch
+    // Phase 4: fade hello out, then collapse down to the mini notch.
     setTimeout(() => {
       if (hello) hello.style.opacity = '0';
 
       setTimeout(() => {
-        // Clean up startup state
-        currentState = 'idle';
-        notch.classList.remove('boot');
-        notch.setAttribute('data-state', 'idle');
+        if (panel) { panel.style.opacity = '0'; panel.style.display = 'none'; }
+        if (collapsedView) collapsedView.style.display = '';
         notch.style.width = '';
         notch.style.height = '';
         notch.style.borderRadius = '';
 
-        // Hide startup panel
-        if (panel) {
-          panel.style.opacity = '0';
-          panel.style.display = 'none';
-        }
-
-        // Restore collapsed bar
-        if (collapsedView) collapsedView.style.display = '';
-
-        // Show normal expanded notch
+        // Leave startup state and collapse to the mini (collapsed) notch so the
+        // app settles into its resting pill, not the full dashboard.
         forcedPanel = null;
-        showActivePanel();
-        decideState();
+        currentState = 'idle';
+        notch.setAttribute('data-state', 'idle');
+        isExpanded = true; // ensure collapse() actually runs
+        collapse();
       }, 520);
-    }, 7100);
-  });
+    }, 6800);
+  };
+
+  // Don't reveal until the intro image is actually painted, otherwise the fade
+  // shows through to black. Fall back on a timer if load never fires.
+  if (introImg && !introImg.complete) {
+    introImg.addEventListener('load', () => requestAnimationFrame(startTimeline), { once: true });
+    setTimeout(() => requestAnimationFrame(startTimeline), 500);
+  } else {
+    requestAnimationFrame(startTimeline);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', runStartupSequence);

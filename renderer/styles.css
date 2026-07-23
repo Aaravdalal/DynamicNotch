@@ -24,7 +24,7 @@ html, body {
   background:var(--bg);
   /* Flush top, much deeper curved bottom for the 'stretched' look from screenshot */
   border-radius:0 0 32px 32px;
-  transition:width .45s var(--spring),height .45s var(--spring),border-radius .3s var(--ease);
+  transition:width .5s var(--spring),height .5s var(--spring),border-radius .5s var(--spring),transform .5s var(--spring),opacity .45s ease;
   /* Removed strong outer stroke for seamless blend with physical bezel */
   box-shadow: none;
   cursor:pointer;will-change:width,height;
@@ -184,8 +184,14 @@ html, body {
 }
 .notch[data-state="music"] .collapsed-view{padding-left:10px}
 .notch.expanded .collapsed-view{opacity:0;pointer-events:none;position:absolute}
-/* Pre-startup: nothing but the bare black notch. */
+/* Pre-startup: keep the notch fully invisible until the startup sequence has
+   the intro banner composed, then it fades in. This kills the empty black notch
+   that used to flash before the animation (the bare collapsed pill on first
+   paint, plus the banner before its image loaded). */
+.notch.boot{opacity:0}
 .notch.boot .collapsed-view{display:none}
+/* The startup banner drives its own reveal — don't also run the panel slide. */
+.panel-startup{animation:none !important}
 
 .c-left,.c-right{display:flex;align-items:center;gap:5px}
 .c-center{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px}
@@ -285,10 +291,15 @@ html, body {
   position:absolute;inset:0;
   border-radius:inherit;overflow:hidden;
 }
-.notch.expanded .panel{pointer-events:all}
+/* Clean reveal: whenever a panel flips from display:none to shown, it eases up
+   and fades in behind the notch's spring resize. Hidden panels are display:none
+   so the animation stays inert until they actually appear — no need to reset it
+   on every per-state show rule. Runs fresh on panel-to-panel switches too. */
+.notch.expanded .panel{pointer-events:all;animation:panelIn .45s var(--spring) both}
 /* An outgoing panel gets out of the way fast — sharing the incoming panel's
    350ms/120ms-delay fade left both stacked on screen for the whole resize. */
-.panel.leaving{transition:opacity .11s linear}
+.panel.leaving{transition:opacity .11s linear;animation:none}
+@keyframes panelIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
 /* Video panel rules moved to top */
 .notch.expanded[data-state="idle"] .panel-idle,
 .notch.expanded[data-state="music"] .panel-idle,
