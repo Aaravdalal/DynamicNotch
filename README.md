@@ -15,7 +15,7 @@ Well, a LOT.You can:
 * **Get messages** from your phone onto the notch
 * **Get calls and answer them**
 * **Use voice search**
-* **See widgets** (for now, only weather)
+* **See widgets** Weather AND Stoinks! more coming soon
 * **Display timers**
 * **See voice recording indicators**
 
@@ -23,7 +23,7 @@ And the best part? I am constantly adding more stuff to it, making it better, an
 
 ## How to use it?
 
-It is simple: download it from GitHub, and then run it in the terminal.
+It is simple: download it from GitHub (the release) , and then run it in the terminal.
 
 ## How to operate the notch?
 
