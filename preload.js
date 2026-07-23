@@ -5,7 +5,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   controlMedia: (action) => ipcRenderer.invoke('control-media', action),
   getCalendar: (targetDate) => ipcRenderer.invoke('get-calendar', targetDate),
   googleCalendarConnect: (config) => ipcRenderer.invoke('google-calendar-connect', config),
-  getBluetooth: () => ipcRenderer.invoke('get-bluetooth'),
   getRecording: () => ipcRenderer.invoke('get-recording'),
   startSpeechRecognition: () => ipcRenderer.invoke('start-speech-recognition'),
   transcribeAudio: (pcmData) => ipcRenderer.invoke('transcribe-audio', pcmData),
@@ -17,9 +16,6 @@ contextBridge.exposeInMainWorld('notchAPI', {
   },
   onBatteryUpdate: (callback) => {
     ipcRenderer.on('battery-update', (event, batState) => callback(batState));
-  },
-  onBluetoothUpdate: (callback) => {
-    ipcRenderer.on('bluetooth-update', (event, device) => callback(device));
   },
   onMediaUpdate: (callback) => {
     ipcRenderer.on('media-update', (event, data) => callback(data));

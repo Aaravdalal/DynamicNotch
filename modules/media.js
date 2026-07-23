@@ -96,17 +96,12 @@ class MediaMonitor extends EventEmitter {
             }
         }
 
-        // Second pass: General "Artist - Song"
-        if (!detected) {
-            for (let item of lines) {
-                if (['explorer', 'taskmgr', 'settings', 'clock', 'antigravity', 'electron', 'chrome', 'msedge', 'firefox', 'brave'].includes(item.proc.toLowerCase())) continue;
-                const parts = item.title.split(' - ');
-                if (parts.length === 2 && parts[0].length > 1 && parts[1].length > 1) {
-                    detected = { artist: parts[0].trim(), track: parts[1].trim(), source: item.proc };
-                    break;
-                }
-            }
-        }
+        // NOTE: There used to be a "General Artist - Song" second pass here that
+        // treated ANY window titled "X - Y" as music. Since monitor-titles.ps1
+        // reports every visible window, that turned editors, docs, terminals,
+        // etc. ("index.html - Notepad") into phantom tracks and popped the music
+        // notch while the user was just coding. Music now comes only from real
+        // media sources (Spotify / YouTube) detected in the first pass above.
 
         if (detected) {
             if (this.clearTimeout) {

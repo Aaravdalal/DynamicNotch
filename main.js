@@ -7,7 +7,6 @@ const path = require('path');
 const fs = require('fs');
 const { getMediaInfo, controlMedia } = require('./modules/media');
 const googleCalendar = require('./modules/google-calendar');
-const { startBluetoothMonitor } = require('./modules/bluetooth');
 const { getRecordingStatus } = require('./modules/recording');
 const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
 const { initFileTray } = require('./modules/file-tray');
@@ -191,10 +190,6 @@ function createWindow() {
   startBatteryMonitor((batState) => {
     console.log('[DEBUG] Battery State received from monitor:', batState);
     safeSend('battery-update', batState);
-  });
-
-  startBluetoothMonitor((device) => {
-    safeSend('bluetooth-update', device);
   });
 
   startExternalTimersMonitor((data) => {
@@ -430,7 +425,6 @@ ipcMain.handle('simulate-win-h', async () => {
   return true;
 });
 
-ipcMain.handle('get-bluetooth', async () => []);
 ipcMain.handle('get-recording', async () => {
   try { return await getRecordingStatus(); } catch (e) { return { recording: false }; }
 });

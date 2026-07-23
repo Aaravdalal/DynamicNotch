@@ -9,15 +9,12 @@ let mediaData = { playing: false };
 let recordingData = { recording: false };
 let wasCharging = null;
 let showedLowBattery = false;
-let btToastTimeout = null;
 let battToastTimeout = null;
 let battToastState = null; // which battery pill the toast is showing
-let btConnectedDevice = null; // persistent BT state
 let calendarOffset = 0;
 let progressInterval = null;
 let fakePct = 0;
 let visualizerInterval = null;
-let btEqInterval = null;
 let forcedPanel = null; // override for expansion
 let isDragActive = false;
 let isMouseOverNotch = false;
@@ -137,9 +134,6 @@ const panelMap = {
   music:           'panelMusic',
   recording:       'panelRecording',
   timer:           'panelTimer',
-  bluetooth:       'panelBluetooth',
-  'bt-connected':  'panelIdle',
-  'bt-music':      'panelBtMusic',
   charging:        'panelCharging',
   unplugged:       'panelUnplugged',
   'low-battery':   'panelLowBattery',
@@ -244,34 +238,6 @@ function setState(s) {
   if (isExpanded) showActivePanel(); else hideAllPanels();
 }
 
-function handleBluetoothUpdate(device) {
-  if (device.connected) {
-    btConnectedDevice = device;
-    
-    // Update collapsed bar battery if present
-    const battDiv = document.getElementById('cNoteBattery');
-    const battPct = document.getElementById('cNoteBatteryPct');
-    if (battDiv && battPct) {
-        if (device.battery > -1) {
-            battPct.textContent = device.battery + '%';
-            battDiv.style.display = 'inline-flex';
-            battPct.classList.toggle('low', device.battery <= 20);
-        } else {
-            battDiv.style.display = 'none';
-        }
-    }
-
-    if (!btToastTimeout) {
-        showBluetoothToast(device);
-    }
-  } else {
-    btConnectedDevice = null;
-    const battDiv = document.getElementById('cNoteBattery');
-    if (battDiv) battDiv.style.display = 'none';
-    decideState();
-  }
-}
-
 function decideState() {
   if (forcedPanel === 'panelSlider' || forcedPanel === 'panelDnd') return; // Don't override forced state
   if (forcedPanel === 'panelTimer') return; // "Time's up" hold owns the notch
@@ -287,9 +253,6 @@ function decideState() {
   // Use the specific toast state — a generic 'battery' has no panel in
   // panelMap, so a background poll mid-toast would blank the notch.
   else if (battToastTimeout) s = battToastState || 'charging';
-  else if (btToastTimeout) s = 'bluetooth';
-  else if (btConnectedDevice && (mediaData.playing || mediaData.paused)) s = 'bt-music';
-  else if (btConnectedDevice) s = 'bt-connected';
   else if (mediaData.playing || mediaData.paused) s = 'music';
   else if (unreadList.length > 0) s = 'unreads';
   
@@ -751,17 +714,14 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       if (typeof mediaData !== 'undefined' && mediaData) mediaData.paused = isLocalPaused;
       const playSvg = document.querySelector('#playBtn svg');
       const dashPlayBtnSvg = document.querySelector('#dashPlayBtn svg');
-      const btmuPlaySvg = document.querySelector('#btmuPlayBtn svg');
       if (isLocalPaused) {
         if(typeof stopVisualizer === 'function') stopVisualizer();
         if (playSvg) playSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
         if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
-        if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
       } else {
         if(typeof startVisualizer === 'function') startVisualizer();
         if (playSvg) playSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
         if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-        if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
       }
     }
   }
@@ -888,11 +848,6 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   // We'll call it from updateMusicUI
 
   setupScrubberDrag();
-
-  // Combined BT-Music controls
-  document.getElementById('btmuPrevBtn').addEventListener('click', e => handleMediaAction('prev', e));
-  document.getElementById('btmuPlayBtn').addEventListener('click', e => handleMediaAction('playpause', e));
-  document.getElementById('btmuNextBtn').addEventListener('click', e => handleMediaAction('next', e));
 
   // Dashboard music controls
   const dPrev = document.getElementById('dashPrevBtn');
@@ -1893,10 +1848,6 @@ function updateStarButtons() {
     if (dashSongArtist) dashSongArtist.textContent = mediaData.artist ? `By: ${mediaData.artist}` : '';
     const dashSongAlbum = document.getElementById('dashSongAlbum');
     if (dashSongAlbum) dashSongAlbum.textContent = mediaData.album || '';
-    const btmuSongTitle = document.getElementById('btmuSongTitle');
-    if (btmuSongTitle) btmuSongTitle.textContent = track;
-    const btmuSongArtist = document.getElementById('btmuSongArtist');
-    if (btmuSongArtist) btmuSongArtist.textContent = mediaData.artist ? `By: ${mediaData.artist}` : '';
 
     // Show music column on dashboard
     document.getElementById('dashMusicCol').classList.remove('hidden');
@@ -1905,18 +1856,15 @@ function updateStarButtons() {
     if (cal) cal.style.justifyContent = 'flex-end';
 
     const playSvg = document.querySelector('#playBtn svg');
-    const btmuPlaySvg = document.querySelector('#btmuPlayBtn svg');
     const dashPlayBtnSvg = document.querySelector('#dashPlayBtn svg');
 
     if (mediaData.paused) {
       stopVisualizer();
       if (playSvg) playSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
-      if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
       if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
     } else {
       startVisualizer();
       if (playSvg) playSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-      if (btmuPlaySvg) btmuPlaySvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
       if (dashPlayBtnSvg) dashPlayBtnSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
     }
     animateProgress();
@@ -1944,20 +1892,11 @@ function updateStarButtons() {
       
       // A video used to black out the album art behind a "Click to play"
       // overlay. Video belongs to the PiP player now, so art stays art.
-
-      const btmuImg = document.getElementById('btmuCoverImg');
-      const btmuPh = document.getElementById('btmuAlbumPh');
-      if (btmuImg) { btmuImg.src = mediaData.artUrl; btmuImg.style.display = 'block'; }
-      if (btmuPh) { btmuPh.style.display = 'none'; }
     } else {
       document.documentElement.style.setProperty('--eq', '#FA233B'); // Apple Red
       coverImg.style.display = 'none';
       placeholder.style.display = 'flex';
       cAlbum.style.display = 'none';
-      const btmuImg = document.getElementById('btmuCoverImg');
-      const btmuPh = document.getElementById('btmuAlbumPh');
-      if (btmuImg) btmuImg.style.display = 'none';
-      if (btmuPh) btmuPh.style.display = 'flex';
       const dashImg = document.getElementById('dashCoverImg');
       if (dashImg) dashImg.style.display = 'none';
       const dashPh = document.getElementById('dashArtPlaceholder');
@@ -1976,10 +1915,6 @@ function updateStarButtons() {
     if (dashSongArtist) dashSongArtist.textContent = 'No active media';
     const dashSongAlbum = document.getElementById('dashSongAlbum');
     if (dashSongAlbum) dashSongAlbum.textContent = '';
-    const btmuSongTitle = document.getElementById('btmuSongTitle');
-    if (btmuSongTitle) btmuSongTitle.textContent = 'Not Playing';
-    const btmuSongArtist = document.getElementById('btmuSongArtist');
-    if (btmuSongArtist) btmuSongArtist.textContent = 'No active media';
 
     // Hide music column on dashboard
     document.getElementById('dashMusicCol').classList.add('hidden');
@@ -2334,96 +2269,6 @@ function showBatteryToast(bat, isFirstReading) {
   runToast('unplugged');
 }
 
-/* ─── Bluetooth ─── */
-function getAirPodsImage(name) {
-  const n = name.toLowerCase();
-  if (n.includes('airpods pro')) return 'airpods_pro.png';
-  if (n.includes('airpods max')) return 'airpods_max.png';
-  if (n.includes('airpod')) return 'airpods_gen.png';
-  return 'airpods_gen.png';
-}
-
-function updateCircularRing(pct) {
-  const circ = 2 * Math.PI * 15; // r=15
-  const fill = document.getElementById('cBtRingFill');
-  const text = document.getElementById('cBtRingText');
-  if (!fill || !text) return;
-  fill.setAttribute('stroke-dasharray', circ);
-  fill.setAttribute('stroke-dashoffset', circ - (pct / 100) * circ);
-  const color = pct <= 20 ? '#ef4444' : '#22c55e';
-  fill.setAttribute('stroke', color);
-  text.textContent = pct;
-}
-
-function startBtEq() {
-  if (btEqInterval) clearInterval(btEqInterval);
-  const spans = document.querySelectorAll('.c-bt-eq span');
-  btEqInterval = setInterval(() => {
-    spans.forEach(s => { s.style.height = Math.floor(Math.random() * 10 + 3) + 'px'; s.style.transition = 'height .12s ease'; });
-  }, 150);
-}
-
-function showBluetoothToast(device) {
-  const name = device.name || 'Bluetooth Device';
-  const imgSrc = getAirPodsImage(name);
-  const known = device.battery >= 0 && device.battery <= 100;
-
-  // Store persistent connection
-  btConnectedDevice = { name, battery: known ? device.battery : -1, imgSrc };
-
-  // --- Expanded toast panel ---
-  document.getElementById('cBtName').textContent = name;
-  document.getElementById('btDeviceName').textContent = name;
-  const img = document.getElementById('btProductImg');
-  if (img) img.src = imgSrc;
-
-  const leftPct = document.getElementById('btPctLeft');
-  const rightPct = document.getElementById('btPctRight');
-  const leftSvg = document.getElementById('btBattLeftSvg');
-  const rightSvg = document.getElementById('btBattRightSvg');
-  if (known) {
-    const fillW = Math.max(1, (device.battery / 100) * 17);
-    const color = device.battery <= 20 ? '#ef4444' : '#22c55e';
-    document.getElementById('btBattFillLeft').setAttribute('width', fillW);
-    document.getElementById('btBattFillLeft').setAttribute('fill', color);
-    leftPct.textContent = device.battery + '%'; leftPct.style.display = 'block'; leftSvg.style.display = 'block';
-    document.getElementById('btBattFillRight').setAttribute('width', fillW);
-    document.getElementById('btBattFillRight').setAttribute('fill', color);
-    rightPct.textContent = device.battery + '%'; rightPct.style.display = 'block'; rightSvg.style.display = 'block';
-  } else {
-    leftPct.style.display = 'none'; leftSvg.style.display = 'none';
-    rightPct.style.display = 'none'; rightSvg.style.display = 'none';
-  }
-
-  // --- Collapsed BT bar ---
-  document.getElementById('cBtSpinImg').src = imgSrc;
-  document.getElementById('cBtLabel').textContent = name;
-  if (known) updateCircularRing(device.battery);
-  startBtEq();
-
-  // --- Combined BT+Music panel ---
-  document.getElementById('btmuImg').src = imgSrc;
-  document.getElementById('btmuName').textContent = name;
-  if (known) {
-    document.getElementById('btmuBattFill').setAttribute('width', Math.max(1, (device.battery / 100) * 17));
-    document.getElementById('btmuPct').textContent = device.battery + '%';
-  }
-
-  // Show expanded toast first
-  if (btToastTimeout) clearTimeout(btToastTimeout);
-  if (isExpanded) collapse();
-
-  // Don't interrupt startup animation
-  if (currentState === 'startup') return;
-
-  setState('bluetooth'); expand();
-  btToastTimeout = setTimeout(() => {
-    btToastTimeout = null;
-    collapse();
-    setTimeout(decideState, 400); // will pick bt-connected or bt-music
-  }, 5000);
-}
-
 /* ─── Unread Messages (swipeable carousel, shown in place of Quick Start) ─── */
 let unreadList = [];
 let unreadIndex = 0;
@@ -2658,7 +2503,6 @@ async function fetchRecording() {
       if (bat && bat.hasBattery) handleBatteryEvent(bat);
     });
   }
-  if (window.notchAPI.onBluetoothUpdate) window.notchAPI.onBluetoothUpdate(showBluetoothToast);
   if (window.notchAPI.onMediaUpdate) window.notchAPI.onMediaUpdate((data) => {
     handleMediaUpdate(data);
     // Swap the star for the PiP glyph when the track has a video behind it.

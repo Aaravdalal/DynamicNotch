@@ -22,33 +22,14 @@
             <span class="c-period" id="cPeriod">Pm</span>
           </div>
           <img class="c-album-img" id="cAlbumImg" src="" alt="" />
-          <!-- BT collapsed: spinning airpods -->
-          <div class="c-bt-spin" id="cBtSpin">
-            <img id="cBtSpinImg" src="airpods_gen.png" alt="" />
-          </div>
-          <!-- BT collapsed: battery badge -->
-          <div class="c-batt" id="cNoteBattery" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--txt)">
-            <span id="cNoteBatteryPct"></span>
-          </div>
         </div>
         <div class="c-center">
           <span class="c-date" id="cDate"></span>
           <span class="c-song" id="cSongTitle"></span>
-          <span class="c-bt-name" id="cBtLabel"></span>
           <span class="c-dl-name" id="cDlName"></span>
         </div>
         <div class="c-right">
           <div class="c-eq" id="cEq"><span></span><span></span><span></span><span></span></div>
-          <!-- BT collapsed: equalizer -->
-          <div class="c-bt-eq" id="cBtEq"><span></span><span></span><span></span><span></span></div>
-          <!-- BT collapsed: circular battery -->
-          <div class="c-bt-ring" id="cBtRing">
-            <svg viewBox="0 0 36 36">
-              <circle class="ring-bg" cx="18" cy="18" r="15" />
-              <circle class="ring-fill" id="cBtRingFill" cx="18" cy="18" r="15" />
-              <text class="ring-text" id="cBtRingText" x="18" y="20" text-anchor="middle">72</text>
-            </svg>
-          </div>
           <!-- Recording dot -->
           <div class="c-rec" id="cRec">
             <div class="rec-dot"></div>
@@ -69,8 +50,6 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             <span id="cTimerTime" style="font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums;">0:00</span>
           </div>
-          <!-- Bluetooth name (old, kept for other states) -->
-          <span class="c-bt" id="cBtName"></span>
           <div class="c-batt" id="cBattery">
             <svg width="22" height="11" viewBox="0 0 22 11" fill="none" id="cBattIcon">
               <rect x="0.5" y="0.5" width="18" height="10" rx="3" stroke="rgba(255,255,255,0.4)" stroke-width="1" />
@@ -589,68 +568,6 @@
         <div class="timer-right" style="display: flex; align-items: center; gap: 6px;">
           <span id="timerLabel" style="font-weight: 500; font-size: 13px; color: #f97316;">Timer</span>
           <span id="timerText" style="font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: #f97316; margin-top: -2px; white-space: nowrap;">0:00</span>
-        </div>
-      </div>
-
-      <div class="panel panel-bt" id="panelBluetooth">
-        <div class="bt-title" id="btDeviceName">AirPods Pro</div>
-        <div class="bt-body">
-          <div class="bt-side">
-            <svg class="bt-batt-icon" viewBox="0 0 28 14" id="btBattLeftSvg">
-              <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
-              <rect id="btBattFillLeft" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
-              <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
-              <path id="btLightningLeft" d="M13 3 L10 7.5 L12.5 7.5 L11 11 L15 6.5 L12.5 6.5 L14 3Z" fill="#0a0a0c" stroke="none"/>
-            </svg>
-            <span class="bt-pct" id="btPctLeft">100%</span>
-          </div>
-          <div class="bt-product"><img id="btProductImg" src="airpods.png" alt="AirPods" /></div>
-          <div class="bt-side">
-            <svg class="bt-batt-icon" viewBox="0 0 28 14" id="btBattRightSvg">
-              <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
-              <rect id="btBattFillRight" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
-              <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
-            </svg>
-            <span class="bt-pct" id="btPctRight">100%</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel panel-btmusic" id="panelBtMusic">
-        <div class="btmu-top">
-          <img class="btmu-img" id="btmuImg" src="airpods_gen.png" alt="" />
-          <div class="btmu-info">
-            <div class="btmu-name" id="btmuName">AirPods</div>
-            <div class="btmu-batt">
-              <svg class="btmu-batt-icon" viewBox="0 0 28 14">
-                <rect x="1" y="1" width="22" height="12" rx="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
-                <rect id="btmuBattFill" x="2.5" y="2.5" width="17" height="9" rx="2" fill="#22c55e"/>
-                <path d="M24 5v4a1.5 1.5 0 0 0 0 -4z" fill="rgba(255,255,255,0.4)"/>
-              </svg>
-              <span class="btmu-pct" id="btmuPct">72%</span>
-            </div>
-          </div>
-        </div>
-        <div class="btmu-divider"></div>
-        <div class="btmu-music">
-          <div class="mu-top">
-            <div class="mu-art">
-              <img id="btmuCoverImg" src="" alt="" crossorigin="anonymous" />
-              <div class="mu-art-ph" id="btmuAlbumPh">
-                <div class="mu-art-grad"></div><div class="mu-art-note">♫</div>
-              </div>
-            </div>
-            <div class="mu-info">
-              <div class="mu-title" id="btmuSongTitle">Not Playing</div>
-              <div class="mu-artist" id="btmuSongArtist">Open Spotify</div>
-            </div>
-            <div class="equalizer" id="btmuEqualizer"><span></span><span></span><span></span><span></span></div>
-          </div>
-          <div class="mu-controls">
-            <button class="mu-btn skip" id="btmuPrevBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-            <button class="mu-btn play" id="btmuPlayBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-            <button class="mu-btn skip" id="btmuNextBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
-          </div>
         </div>
       </div>
 
