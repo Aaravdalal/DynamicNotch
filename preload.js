@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('notchAPI', {
   getMedia: () => ipcRenderer.invoke('get-media'),
   controlMedia: (action) => ipcRenderer.invoke('control-media', action),
+  seekMedia: (positionMs) => ipcRenderer.invoke('seek-media', positionMs),
   getCalendar: (targetDate) => ipcRenderer.invoke('get-calendar', targetDate),
   googleCalendarConnect: (config) => ipcRenderer.invoke('google-calendar-connect', config),
   getRecording: () => ipcRenderer.invoke('get-recording'),

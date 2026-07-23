@@ -2046,37 +2046,44 @@ function updateMicVisualizerWithPeak(peak) {
 let musicDuration = 0;
 let musicElapsed = 0;
 let isDraggingScrubber = false;
+// Ground truth from SMTC: real position sampled at a real moment. The scrubber
+// interpolates forward from here while playing, and re-syncs on every update, so
+// it's both smooth and accurate (no more guessed counter).
+let posBaseSec = 0;   // SMTC position in seconds
+let posBaseAt = 0;    // Date.now() when that position was sampled (renderer clock)
+
+// Real elapsed seconds right now: the sampled position plus the wall-clock time
+// that has passed since, but only while actually playing.
+function currentElapsed() {
+  if (musicDuration <= 0) return 0;
+  let e = posBaseSec;
+  if (mediaData.playing && !isDraggingScrubber) e += (Date.now() - posBaseAt) / 1000;
+  return Math.max(0, Math.min(musicDuration, e));
+}
 
 function animateProgress() {
   if (progressInterval) clearInterval(progressInterval);
-  
-  if (mediaData.duration && mediaData.duration > 0) {
-    musicDuration = Math.floor(mediaData.duration / 1000);
-  } else {
-    musicDuration = 0; // Default or hidden if unknown
-  }
 
-  // If a new track started playing, reset elapsed
-  if (mediaData.playing && !isDraggingScrubber && (fakePct === 0 || lastTrack !== mediaData.track)) {
-    musicElapsed = 0;
+  musicDuration = (mediaData.durationMs && mediaData.durationMs > 0)
+    ? mediaData.durationMs / 1000
+    : (mediaData.duration && mediaData.duration > 0 ? mediaData.duration / 1000 : 0);
+
+  // Re-sync the interpolation base to SMTC's real position. posAt is a main-
+  // process timestamp on the same machine clock, so it lines up with Date.now().
+  if (!isDraggingScrubber) {
+    posBaseSec = (mediaData.positionMs || 0) / 1000;
+    posBaseAt = mediaData.posAt || Date.now();
     lastTrack = mediaData.track;
+    const el = currentElapsed();
+    musicElapsed = el;
+    updateScrubberUI(musicDuration > 0 ? (el / musicDuration) * 100 : 0, el, musicDuration);
   }
 
   progressInterval = setInterval(() => {
-    if (!mediaData.playing || isDraggingScrubber) return;
-    
-    if (musicDuration > 0) {
-      musicElapsed += 0.5;
-      if (musicElapsed > musicDuration) musicElapsed = 0;
-      fakePct = (musicElapsed / musicDuration) * 100;
-    } else {
-      fakePct += 0.25; if (fakePct > 100) fakePct = 0;
-      musicElapsed = Math.floor((fakePct/100) * 210);
-      musicDuration = 210;
-    }
-
-    updateScrubberUI(fakePct, musicElapsed, musicDuration);
-  }, 500);
+    if (!mediaData.playing || isDraggingScrubber || musicDuration <= 0) return;
+    musicElapsed = currentElapsed();
+    updateScrubberUI((musicElapsed / musicDuration) * 100, musicElapsed, musicDuration);
+  }, 250);
 }
 
 /* ─── Scrolling song titles ─── */
@@ -2158,22 +2165,39 @@ function setupScrubberDrag() {
   
   let isDown = false;
   
+  let pendingSeekPct = null;
+
   const moveScrubber = (e, area) => {
     if (!isDown) return;
     const rect = area.getBoundingClientRect();
     let x = e.clientX || (e.touches && e.touches[0].clientX);
     if (x === undefined) return;
-    
+
     let pct = ((x - rect.left) / rect.width) * 100;
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
-    
-    fakePct = pct;
-    const curTotal = musicDuration > 0 ? musicDuration : 210;
-    musicElapsed = (pct / 100) * curTotal;
-    updateScrubberUI(pct, musicElapsed, curTotal);
+
+    pendingSeekPct = pct;
+    if (musicDuration > 0) {
+      musicElapsed = (pct / 100) * musicDuration;
+      updateScrubberUI(pct, musicElapsed, musicDuration);
+    }
   };
-  
+
+  // On release, commit the seek: tell SMTC to jump there and move the local
+  // interpolation base so the bar stays put instead of snapping back until the
+  // next SMTC tick confirms.
+  const commitSeek = () => {
+    if (pendingSeekPct == null || musicDuration <= 0) { pendingSeekPct = null; return; }
+    const targetSec = (pendingSeekPct / 100) * musicDuration;
+    posBaseSec = targetSec;
+    posBaseAt = Date.now();
+    if (window.notchAPI && window.notchAPI.seekMedia) {
+      window.notchAPI.seekMedia(Math.round(targetSec * 1000));
+    }
+    pendingSeekPct = null;
+  };
+
   seekAreas.forEach(seekArea => {
     if (!seekArea) return;
     seekArea.addEventListener('mousedown', (e) => {
@@ -2181,25 +2205,27 @@ function setupScrubberDrag() {
       isDraggingScrubber = true;
       moveScrubber(e, seekArea);
     });
-    
+
     window.addEventListener('mousemove', (e) => moveScrubber(e, seekArea));
     window.addEventListener('mouseup', () => {
       if (isDown) {
         isDown = false;
+        commitSeek();
         setTimeout(() => isDraggingScrubber = false, 100); // small delay to resume
       }
     });
-    
+
     seekArea.addEventListener('touchstart', (e) => {
       isDown = true;
       isDraggingScrubber = true;
       moveScrubber(e, seekArea);
     });
-    
+
     window.addEventListener('touchmove', (e) => moveScrubber(e, seekArea));
     window.addEventListener('touchend', () => {
       if (isDown) {
         isDown = false;
+        commitSeek();
         setTimeout(() => isDraggingScrubber = false, 100);
       }
     });

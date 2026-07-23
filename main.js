@@ -5,7 +5,7 @@ app.disableHardwareAcceleration();
 
 const path = require('path');
 const fs = require('fs');
-const { getMediaInfo, controlMedia } = require('./modules/media');
+const { getMediaInfo, controlMedia, seekMedia } = require('./modules/media');
 const googleCalendar = require('./modules/google-calendar');
 const { getRecordingStatus } = require('./modules/recording');
 const { startBatteryMonitor, getBatteryStatus } = require('./modules/battery');
@@ -397,6 +397,14 @@ ipcMain.handle('control-media', async (_, action) => {
     await controlMedia(action);
   } catch (e) {
     console.error('[control-media error]', e.message);
+  }
+});
+
+ipcMain.handle('seek-media', async (_, positionMs) => {
+  try {
+    seekMedia(positionMs);
+  } catch (e) {
+    console.error('[seek-media error]', e.message);
   }
 });
 

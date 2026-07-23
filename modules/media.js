@@ -2,14 +2,19 @@ const { spawn, exec } = require('child_process');
 const path = require('path');
 const EventEmitter = require('events');
 
+const EMPTY_MEDIA = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, durationMs: 0, positionMs: 0, posAt: 0, videoId: null, album: '', source: '' };
+
 class MediaMonitor extends EventEmitter {
     constructor() {
         super();
-        this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, source: '' };
-        this.cachedArt = {};
+        this.lastMediaInfo = { ...EMPTY_MEDIA };
+        this.cachedArt = {};      // keyed by "artist track" for fetchArt
+        this.artForKey = null;    // art of the currently-playing track
+        this.lastKey = '';        // title|artist|source of the current track
         this.monitorProc = null;
         this.buffer = '';
         this.destroyed = false;
+        this.clearTimeout = null;
         this.startMonitor();
     }
 
@@ -21,13 +26,17 @@ class MediaMonitor extends EventEmitter {
         }
     }
 
+    // Source of truth is now Windows' System Media Transport Controls (SMTC),
+    // which reports the real track, play state, and — crucially — the true
+    // position and duration. This replaces window-title scraping (which guessed
+    // the song from any "X - Y" window) and the renderer's fake progress timer.
     startMonitor() {
         if (this.destroyed) return;
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'monitor-titles.ps1');
+        const scriptPath = path.join(__dirname, '..', 'scripts', 'smtc-monitor.ps1');
         try {
             this.monitorProc = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
         } catch (e) {
-            console.error('Failed to spawn monitor:', e.message);
+            console.error('Failed to spawn SMTC monitor:', e.message);
             return;
         }
 
@@ -35,110 +44,97 @@ class MediaMonitor extends EventEmitter {
             this.buffer += data.toString();
             const lines = this.buffer.split(/\r?\n/);
             this.buffer = lines.pop();
-
-            const titles = [];
-            for (let line of lines) {
-                if (line.startsWith('UPDATE|')) {
-                    const parts = line.split('|');
-                    if (parts.length >= 3) {
-                        titles.push({ proc: parts[1], title: parts[2] });
-                    }
-                }
-            }
-            if (titles.length > 0) {
-                this.processTitles(titles);
+            for (const line of lines) {
+                const s = line.trim();
+                if (s.startsWith('SMTC|')) this.handleSmtc(s.substring(5));
             }
         });
 
-        this.monitorProc.stderr.on('data', (data) => {
-            // Suppress noisy errors
-        });
-
-        this.monitorProc.on('error', (err) => {
-            console.error('Monitor process error:', err.message);
-        });
-
+        this.monitorProc.stderr.on('data', () => { /* WinRT warnings are noise */ });
+        this.monitorProc.on('error', (err) => console.error('SMTC monitor error:', err.message));
         this.monitorProc.on('close', () => {
-            if (!this.destroyed) {
-                setTimeout(() => this.startMonitor(), 5000);
-            }
+            if (!this.destroyed) setTimeout(() => this.startMonitor(), 5000);
         });
     }
 
-    async processTitles(lines) {
-        let detected = null;
+    // Map SMTC's SourceAppUserModelId to the app's notion of a "source". Browser
+    // sessions are treated as YouTube so the art/videoId scrape and the PiP star
+    // keep working (the notch's video features are YouTube-only).
+    deriveSource(appId) {
+        const a = (appId || '').toLowerCase();
+        if (a.includes('spotify')) return 'Spotify';
+        if (/(chrome|msedge|edge|firefox|brave|opera|vivaldi)/.test(a)) return 'YouTube';
+        if (a.includes('apple') || a.includes('music')) return 'Apple Music';
+        return appId || 'Media';
+    }
 
-        // First pass: Explicit Spotify/YouTube
-        for (let item of lines) {
-            const lowTitle = item.title.toLowerCase();
-            const lowProc = item.proc.toLowerCase();
+    // Debounced clear — a brief NONE (track change, tab switch) shouldn't blank
+    // the notch instantly.
+    scheduleClear() {
+        if (!this.lastMediaInfo.playing && !this.lastMediaInfo.paused) return;
+        if (this.clearTimeout) return;
+        this.clearTimeout = setTimeout(() => {
+            this.clearTimeout = null;
+            this.lastKey = '';
+            this.artForKey = null;
+            this.lastMediaInfo = { ...EMPTY_MEDIA };
+            this.emit('update', this.lastMediaInfo);
+        }, 2500);
+    }
 
-            if (lowProc === 'spotify' || lowTitle.includes('spotify')) {
-                if (/^spotify(\s+(premium|free|ads))?$/i.test(item.title)) continue;
-                
-                let part = item.title;
-                if (item.title.endsWith(' - Spotify')) part = item.title.substring(0, item.title.length - 10);
-                
-                const parts = part.split(' - ');
-                if (parts.length >= 2) {
-                    detected = { artist: parts[0].trim(), track: parts[1].trim(), source: 'Spotify' };
-                } else {
-                    detected = { artist: 'Spotify', track: part.trim(), source: 'Spotify' };
-                }
-                if (detected) break;
-            }
-            const ytIdx = lowTitle.indexOf(' - youtube');
-            if (ytIdx !== -1) {
-                let part = item.title.substring(0, ytIdx);
-                part = part.replace(/^\(\d+\+?\)\s*/, '');
-                detected = { artist: 'YouTube', track: part, source: 'YouTube' };
-                break;
-            }
+    async handleSmtc(payload) {
+        if (payload === 'NONE') { this.scheduleClear(); return; }
+
+        let d;
+        try { d = JSON.parse(payload); } catch (e) { return; }
+        const status = d.status || '';
+        const playing = status === 'Playing';
+        const paused = status === 'Paused';
+
+        // Stopped / Closed / no title → nothing to show.
+        if ((!playing && !paused) || !d.title) { this.scheduleClear(); return; }
+
+        if (this.clearTimeout) { clearTimeout(this.clearTimeout); this.clearTimeout = null; }
+
+        const source = this.deriveSource(d.appId);
+        const key = `${d.title}|${d.artist}|${source}`;
+        const trackChanged = key !== this.lastKey;
+
+        if (trackChanged) {
+            this.lastKey = key;
+            // Fetch artwork (and, for YouTube, the videoId for PiP) with a hard
+            // timeout so a slow lookup never blocks the position updates.
+            let art = { url: '', duration: 0, videoId: null, album: '', channelName: '' };
+            try {
+                const artQuery = source === 'YouTube'
+                    ? this.fetchArt('YouTube', d.title)
+                    : this.fetchArt(d.artist || source, d.title);
+                const timeoutP = new Promise((res) => setTimeout(() => res(art), 5000));
+                art = await Promise.race([artQuery, timeoutP]);
+            } catch (e) { /* keep empty art */ }
+            this.artForKey = art;
         }
+        const art = this.artForKey || { url: '', duration: 0, videoId: null, album: '', channelName: '' };
 
-        // NOTE: There used to be a "General Artist - Song" second pass here that
-        // treated ANY window titled "X - Y" as music. Since monitor-titles.ps1
-        // reports every visible window, that turned editors, docs, terminals,
-        // etc. ("index.html - Notepad") into phantom tracks and popped the music
-        // notch while the user was just coding. Music now comes only from real
-        // media sources (Spotify / YouTube) detected in the first pass above.
+        // Prefer SMTC's real duration; fall back to the art provider's.
+        const durationMs = d.durationMs > 0 ? d.durationMs : (art.duration || 0);
 
-        if (detected) {
-            if (this.clearTimeout) {
-                clearTimeout(this.clearTimeout);
-                this.clearTimeout = null;
-            }
-            const changed = detected.track !== this.lastMediaInfo.track || detected.artist !== this.lastMediaInfo.artist || !this.lastMediaInfo.playing;
-            if (changed) {
-                // Fetch art with a hard timeout — never let it block the update
-                let artResult = { url: '', duration: 0 };
-                try {
-                    const artPromise = this.fetchArt(detected.artist, detected.track);
-                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ url: '', duration: 0 }), 5000));
-                    artResult = await Promise.race([artPromise, timeoutPromise]);
-                } catch (e) {
-                    console.error('fetchArt error:', e.message);
-                }
         this.lastMediaInfo = {
-            playing: true,
-            paused: false,
-            artist: artResult.channelName || detected.artist,
-            track: detected.track,
-            artUrl: artResult.url,
-            duration: artResult.duration,
-            videoId: artResult.videoId || null,
-            album: artResult.album || '',
-            source: detected.source
+            playing,
+            paused,
+            title: d.title,
+            track: d.title,
+            artist: d.artist || art.channelName || source,
+            artUrl: art.url || '',
+            duration: durationMs,
+            durationMs,
+            positionMs: d.positionMs || 0,
+            posAt: Date.now(),      // when positionMs was sampled, for renderer interpolation
+            videoId: art.videoId || null,
+            album: d.album || art.album || '',
+            source
         };
-                this.emit('update', this.lastMediaInfo);
-            }
-        } else if (this.lastMediaInfo.playing && !this.clearTimeout) {
-            this.clearTimeout = setTimeout(() => {
-                this.lastMediaInfo = { playing: false, paused: false, title: '', artist: '', track: '', artUrl: '', duration: 0, album: '', source: '' };
-                this.emit('update', this.lastMediaInfo);
-                this.clearTimeout = null;
-            }, 5000);
-        }
+        this.emit('update', this.lastMediaInfo);
     }
 
     async fetchArt(artist, track) {
@@ -249,9 +245,21 @@ async function controlMedia(action) {
     ps.stdin.write(`$key=[Convert]::ToByte('${vk}',16); [K]::keybd_event($key, 0, 1, [UIntPtr]::Zero); Start-Sleep -Milliseconds 50; [K]::keybd_event($key, 0, 3, [UIntPtr]::Zero);\n`);
 }
 
-module.exports = { 
-    getMediaInfo: () => monitor.getMediaInfo(), 
+// Seek the current SMTC session to positionMs. One-shot PowerShell — a little
+// latency, but seeks are occasional. The scrubber updates optimistically and
+// re-syncs to the real position on the next SMTC tick regardless.
+function seekMedia(positionMs) {
+    const ms = Math.max(0, Math.round(positionMs || 0));
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'seek-media.ps1');
+    try {
+        spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-PositionMs', String(ms)], { windowsHide: true });
+    } catch (e) { console.error('seekMedia error:', e.message); }
+}
+
+module.exports = {
+    getMediaInfo: () => monitor.getMediaInfo(),
     controlMedia,
+    seekMedia,
     destroyMediaMonitor: () => monitor.destroy(),
     onMediaUpdate: (cb) => {
         monitor.on('update', cb);
