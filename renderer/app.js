@@ -772,55 +772,9 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     });
   }
 
-  // Star buttons logic
-  const toggleStar = (btn) => {
-    if(!btn) return;
-    const svg = btn.querySelector('svg');
-    if (!svg) return;
-    const isFilled = svg.getAttribute('fill') === 'currentColor';
-    if (isFilled) {
-      svg.setAttribute('fill', 'none');
-      btn.style.color = 'rgba(255,255,255,0.5)';
-    } else {
-      svg.setAttribute('fill', 'currentColor');
-      btn.style.color = '#22c55e'; // Green highlight
-    }
-  };
-  
-  // Helper to update star/PiP button icon based on videoId availability
-  function updateStarButtons() {
-    const hasVideo = hasPipVideo();
-    const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
-    const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-    
-    const pStar = document.getElementById('shuffleBtn');
-    const dStar = document.getElementById('dashStarBtn');
-    
-    if (pStar) {
-      const svg = pStar.querySelector('svg');
-      if (svg) {
-        if (hasVideo) {
-          svg.outerHTML = pipSvg;
-          pStar.title = 'Play in Notch PiP';
-        } else {
-          svg.outerHTML = starSvg;
-          pStar.title = 'Toggle favorite';
-        }
-      }
-    }
-    if (dStar) {
-      const svg = dStar.querySelector('svg');
-      if (svg) {
-        if (hasVideo) {
-          svg.outerHTML = pipSvg;
-          dStar.title = 'Play in Notch PiP';
-        } else {
-          svg.outerHTML = starSvg;
-          dStar.title = 'Toggle favorite';
-        }
-      }
-    }
-  }
+  // Star buttons: the icon (star vs PiP glyph) and the saved-state fill are
+  // driven by the module-level updateStarButtons(); the click handlers below
+  // save to Liked Songs (music) or open PiP (YouTube video).
 
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
   if(pStar) pStar.addEventListener('click', (e) => {
@@ -835,8 +789,10 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       showActivePanel();
       openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
     } else {
-      // Nothing to put in PiP — fall back to the favourite toggle.
-      toggleStar(pStar);
+      // Music (no video): save/unsave the song in the Liked Songs playlist.
+      const liked = toggleLikedSong();
+      applyStarFill(document.getElementById('shuffleBtn'), liked);
+      applyStarFill(document.getElementById('dashStarBtn'), liked);
     }
   });
 
@@ -853,8 +809,10 @@ const quickShareIcon = document.getElementById('quickShareIcon');
       showActivePanel();
       openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
     } else {
-      // Nothing to put in PiP — fall back to the favourite toggle.
-      toggleStar(dStar);
+      // Music (no video): save/unsave the song in the Liked Songs playlist.
+      const liked = toggleLikedSong();
+      applyStarFill(document.getElementById('shuffleBtn'), liked);
+      applyStarFill(document.getElementById('dashStarBtn'), liked);
     }
   });
 
@@ -1801,43 +1759,74 @@ function getAverageRGB(img) {
 }
 
 // A PiP video only exists for YouTube. Other sources (Spotify, local players)
-// report a track but nothing embeddable, so they keep the favourite star.
+// report a track but nothing embeddable, so they keep the star.
 function hasPipVideo() {
   return !!(mediaData && mediaData.videoId && mediaData.source === 'YouTube');
+}
+
+/* ─── Liked Songs playlist ───
+   The star (shown for non-video music) saves the current song to a single
+   "Liked Songs" list persisted in localStorage, and fills solid when the
+   playing song is already saved. YouTube videos keep the PiP button instead. */
+function songKey(m) {
+  if (!m) return '';
+  const t = (m.track || m.title || '').trim().toLowerCase();
+  const a = (m.artist || '').trim().toLowerCase();
+  return t ? (t + '|' + a) : '';
+}
+function getLikedSongs() {
+  try { return JSON.parse(localStorage.getItem('likedSongs') || '[]'); } catch (e) { return []; }
+}
+function isSongLiked(m) {
+  const k = songKey(m || mediaData);
+  return k ? getLikedSongs().some(s => s.key === k) : false;
+}
+function toggleLikedSong(m) {
+  m = m || mediaData;
+  const k = songKey(m);
+  if (!k) return false;
+  const list = getLikedSongs();
+  const idx = list.findIndex(s => s.key === k);
+  let liked;
+  if (idx >= 0) { list.splice(idx, 1); liked = false; }
+  else {
+    list.push({ key: k, track: m.track || m.title || '', artist: m.artist || '',
+                artUrl: m.artUrl || '', videoId: m.videoId || null,
+                source: m.source || '', added: Date.now() });
+    liked = true;
+  }
+  try { localStorage.setItem('likedSongs', JSON.stringify(list)); } catch (e) {}
+  return liked;
+}
+// Paint a star button to match saved state: filled green when liked, outline otherwise.
+function applyStarFill(btn, liked) {
+  if (!btn) return;
+  const svg = btn.querySelector('svg');
+  if (!svg) return;
+  svg.setAttribute('fill', liked ? 'currentColor' : 'none');
+  btn.style.color = liked ? '#22c55e' : 'rgba(255,255,255,0.5)';
+  btn.title = liked ? 'Remove from Liked Songs' : 'Add to Liked Songs';
 }
 
 function updateStarButtons() {
     const hasVideo = hasPipVideo();
     const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
     const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-    
-    const pStar = document.getElementById('shuffleBtn');
-    const dStar = document.getElementById('dashStarBtn');
-    
-    if (pStar) {
-      const svg = pStar.querySelector('svg');
-      if (svg) {
-        if (hasVideo) {
-          svg.outerHTML = pipSvg;
-          pStar.title = 'Play in Notch PiP';
-        } else {
-          svg.outerHTML = starSvg;
-          pStar.title = 'Toggle favorite';
-        }
+
+    const liked = isSongLiked();
+    [document.getElementById('shuffleBtn'), document.getElementById('dashStarBtn')].forEach(btn => {
+      if (!btn) return;
+      const svg = btn.querySelector('svg');
+      if (!svg) return;
+      if (hasVideo) {
+        svg.outerHTML = pipSvg;
+        btn.style.color = 'rgba(255,255,255,0.5)';
+        btn.title = 'Play in Notch PiP';
+      } else {
+        svg.outerHTML = starSvg;
+        applyStarFill(btn, liked); // fills if the current song is saved
       }
-    }
-    if (dStar) {
-      const svg = dStar.querySelector('svg');
-      if (svg) {
-        if (hasVideo) {
-          svg.outerHTML = pipSvg;
-          dStar.title = 'Play in Notch PiP';
-        } else {
-          svg.outerHTML = starSvg;
-          dStar.title = 'Toggle favorite';
-        }
-      }
-    }
+    });
   }
   
   function updateMusicUI() {
