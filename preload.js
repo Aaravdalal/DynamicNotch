@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('notchAPI', {
   getMedia: () => ipcRenderer.invoke('get-media'),
@@ -80,6 +80,9 @@ contextBridge.exposeInMainWorld('notchAPI', {
   getTrayFiles: () => ipcRenderer.invoke('get-tray-files'),
   removeTrayFile: (path) => ipcRenderer.invoke('remove-tray-file', path),
   startDragOut: (path) => ipcRenderer.send('start-drag-out', path),
+  // Electron 32+ removed File.path; the real filesystem path of a dropped File
+  // must be resolved through webUtils now.
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   onOpenFileTray: (callback) => ipcRenderer.on('open-file-tray', callback),
   openQuickShare: () => ipcRenderer.invoke('open-quickshare'),
   shareFiles: (paths) => ipcRenderer.invoke('share-files', paths),

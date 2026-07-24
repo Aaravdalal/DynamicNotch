@@ -1823,6 +1823,7 @@ function updateStarButtons() {
   updateTransportIcons();
 
   if (mediaData.playing || mediaData.paused) {
+    console.log('[ARTDBG] source=' + mediaData.source + ' artUrl=[' + (mediaData.artUrl || '') + '] videoId=' + mediaData.videoId);
     const track = mediaData.track || mediaData.title;
     setScrollingTitle(document.getElementById('songTitle'), track);
     const songArtist = document.getElementById('songArtist');
@@ -1871,7 +1872,8 @@ function updateStarButtons() {
         if (isLocal) img.removeAttribute('crossorigin'); else img.crossOrigin = 'Anonymous';
         img.src = mediaData.artUrl;
       };
-      coverImg.onload = () => { document.documentElement.style.setProperty('--eq', getAverageRGB(coverImg)); };
+      coverImg.onload = () => { console.log('[ARTDBG] coverImg LOADED w=' + coverImg.naturalWidth); document.documentElement.style.setProperty('--eq', getAverageRGB(coverImg)); };
+      coverImg.onerror = (ev) => { console.log('[ARTDBG] coverImg ERROR loading ' + coverImg.src); };
       setArt(coverImg);
       coverImg.style.display = 'block';
       placeholder.style.display = 'none';
@@ -3727,84 +3729,104 @@ async function renderFileTray() {
   });
 }
 
-document.addEventListener('dragenter', (e) => {
-  e.preventDefault();
-  if (e.dataTransfer.types.includes('Files')) {
-    isDragActive = true;
-    clearTimeout(dragLeaveTimer);
-    if (currentState !== 'file-tray') {
-      currentState = 'file-tray';
-      notch.setAttribute('data-state', 'file-tray');
-      if (!isExpanded) {
-        expand();
-      } else {
-        showActivePanel();
-      }
-      renderFileTray();
-    }
-    document.getElementById('ftDropzone').classList.add('drag-over');
+// A native file drag never delivers mousemove, so the hover machinery that
+// normally opens the notch and turns OFF click-through can't see it. We drive
+// the whole drag as one explicit "session": enter once → disable click-through
+// (otherwise the OS routes the drag straight past the notch and nothing can
+// land) and open the tray; leave for real → collapse. A drag-depth counter
+// makes crossing between child elements a no-op instead of an expand/collapse
+// storm — dragenter/dragleave both bubble from every child.
+let dragDepth = 0;
+let qsHot = false;
+
+function setQsHighlight(on) {
+  const qsIcon = document.getElementById('quickShareIcon');
+  if (!qsIcon || qsHot === on) return;   // only write on change — no per-frame reflow
+  qsHot = on;
+  qsIcon.style.background = on ? 'rgba(66, 133, 244, 0.4)' : '';
+  qsIcon.style.transform = on ? 'scale(1.1)' : '';
+  qsIcon.style.transition = 'background 0.15s ease, transform 0.15s ease';
+}
+
+function beginDragSession() {
+  isDragActive = true;
+  clearTimeout(dragLeaveTimer);
+  window.notchAPI.setIgnoreMouse(false);   // make the notch a real drop surface
+  if (currentState !== 'file-tray') {
+    currentState = 'file-tray';
+    notch.setAttribute('data-state', 'file-tray');
+    if (!isExpanded) expand(); else showActivePanel();
+    renderFileTray();
   }
+  const dz = document.getElementById('ftDropzone');
+  if (dz) dz.classList.add('drag-over');
+}
+
+function endDragSession() {
+  dragDepth = 0;
+  isDragActive = false;
+  setQsHighlight(false);
+  const dz = document.getElementById('ftDropzone');
+  if (dz) dz.classList.remove('drag-over');
+  // Grace period: a fast drag back in (or the layout shift from expanding)
+  // cancels the collapse instead of flickering it shut.
+  clearTimeout(dragLeaveTimer);
+  dragLeaveTimer = setTimeout(() => {
+    if (!isMouseOverNotch && currentState === 'file-tray') collapse();
+  }, 400);
+}
+
+document.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+  e.preventDefault();
+  dragDepth++;
+  if (dragDepth === 1) beginDragSession();
 });
 
 document.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  clearTimeout(dragLeaveTimer);
-  // Highlight Quick Share icon when hovering over it
+  if (!isDragActive) return;
+  e.preventDefault();                    // required for 'drop' to fire
+  e.dataTransfer.dropEffect = 'copy';
   const qsIcon = document.getElementById('quickShareIcon');
-  if (qsIcon) {
-    if (qsIcon.contains(e.target) || qsIcon === e.target) {
-      qsIcon.style.background = 'rgba(66, 133, 244, 0.4)';
-      qsIcon.style.transform = 'scale(1.1)';
-      qsIcon.style.transition = 'all 0.2s ease';
-    } else {
-      qsIcon.style.background = '';
-      qsIcon.style.transform = '';
-    }
-  }
+  setQsHighlight(!!(qsIcon && (qsIcon.contains(e.target) || qsIcon === e.target)));
 });
 
 document.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  const dropzone = document.getElementById('ftDropzone');
-  if(dropzone) dropzone.classList.remove('drag-over');
-  const qsIcon = document.getElementById('quickShareIcon');
-  if (qsIcon) {
-    qsIcon.style.background = '';
-    qsIcon.style.transform = '';
-  }
-  
-  dragLeaveTimer = setTimeout(() => {
-    isDragActive = false;
-    if (currentState === 'file-tray') {
-      collapse();
-    }
-  }, 300);
+  if (!isDragActive) return;
+  dragDepth--;
+  if (dragDepth <= 0) endDragSession();   // only fires on a true window exit
 });
 
 document.addEventListener('dragend', () => {
-  isDragActive = false;
+  if (isDragActive) endDragSession();
 });
 
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
+  dragDepth = 0;
   isDragActive = false;
-  document.getElementById('ftDropzone').classList.remove('drag-over');
-  const qsIcon = document.getElementById('quickShareIcon');
-  if (qsIcon) {
-    qsIcon.style.background = '';
-    qsIcon.style.transform = '';
-  }
-  
+  setQsHighlight(false);
+  const dz = document.getElementById('ftDropzone');
+  if (dz) dz.classList.remove('drag-over');
+
+  // Electron 32+ dropped File.path — resolve the real path via webUtils instead,
+  // otherwise every dropped file came through as undefined and nothing shared.
+  const pathFor = (f) => {
+    try { return f && window.notchAPI.getPathForFile ? window.notchAPI.getPathForFile(f) : (f && f.path); }
+    catch (err) { return f && f.path; }
+  };
   const files = [];
   if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
     for (const f of e.dataTransfer.files) {
-      files.push(f.path);
+      const p = pathFor(f);
+      if (p) files.push(p);
     }
   } else if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
     for (const item of e.dataTransfer.items) {
       if (item.kind === 'file') {
         const f = item.getAsFile();
-        if (f) files.push(f.path);
+        const p = pathFor(f);
+        if (p) files.push(p);
       }
     }
   }

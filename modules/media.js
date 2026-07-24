@@ -102,27 +102,31 @@ class MediaMonitor extends EventEmitter {
 
         if (trackChanged) {
             this.lastKey = key;
-            // Fetch artwork (and, for YouTube, the videoId for PiP) with a hard
-            // timeout so a slow lookup never blocks the position updates.
-            let art = { url: '', duration: 0, videoId: null, album: '', channelName: '' };
-            try {
-                const artQuery = source === 'YouTube'
-                    ? this.fetchArt('YouTube', d.title)
-                    : this.fetchArt(d.artist || source, d.title);
-                const timeoutP = new Promise((res) => setTimeout(() => res(art), 5000));
-                art = await Promise.race([artQuery, timeoutP]);
-            } catch (e) { /* keep empty art */ }
-            this.artForKey = art;
+            this.artForKey = null;
+            this.artTries = 0;
+        }
+        // Fetch artwork (and, for YouTube, the videoId for PiP) WITHOUT blocking
+        // the position stream, and retry on later ticks until it lands. The
+        // YouTube scrape is flaky — one miss used to leave the whole song showing
+        // the empty placeholder — so we re-attempt (bounded) whenever we still
+        // have no URL. The art appears on a subsequent ~900ms emit.
+        if ((!this.artForKey || !this.artForKey.url) && !this.artFetching && (this.artTries || 0) < 8) {
+            this.artFetching = true;
+            this.artTries = (this.artTries || 0) + 1;
+            const keyAtFetch = key;
+            const artQuery = source === 'YouTube'
+                ? this.fetchArt('YouTube', d.title)
+                : this.fetchArt(d.artist || source, d.title);
+            Promise.race([artQuery, new Promise((res) => setTimeout(() => res(null), 7000))])
+                .then((art) => { if (art && art.url && this.lastKey === keyAtFetch) this.artForKey = art; })
+                .catch(() => {})
+                .finally(() => { this.artFetching = false; });
         }
         const art = this.artForKey || { url: '', duration: 0, videoId: null, album: '', channelName: '' };
 
         // Prefer SMTC's real duration; fall back to the art provider's.
         const durationMs = d.durationMs > 0 ? d.durationMs : (art.duration || 0);
-
-        // Prefer the thumbnail SMTC hands us — it's the exact art Windows shows
-        // for the playing media (album cover / YouTube frame), so it never fails
-        // the way the YouTube HTML scrape does. Fall back to the scraped art.
-        const artUrl = d.thumb ? d.thumb : (art.url || '');
+        const artUrl = art.url || '';
 
         this.lastMediaInfo = {
             playing,
