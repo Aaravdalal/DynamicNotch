@@ -1,6 +1,6 @@
 # Dynamic Notch for Windows
 
-I will give you step-by-step instructions on how to use it and explain what it is.
+I will give you step-by-step instructions on how to use it and explain what it is. SORRY I DO USE GITHUB COPILOT AUTO COMMIT MESSAGES
 
 Dynamic Notch is an Apple-inspired concept. Think of it as a Dynamic Island in a notch form for Windows computers.
 
