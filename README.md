@@ -78,6 +78,36 @@ Picture in picture on notch in a youtube video
 
 Message appearing on notch
 
+Updated dashboard image
+
+<img width="934" height="217" alt="image" src="https://github.com/user-attachments/assets/66f86ddb-2ddc-4b40-a3d4-412daf8a321b" />
+
+<img width="900" height="212" alt="image" src="https://github.com/user-attachments/assets/61bb1b8f-5bad-41ae-8bc7-29c99ae331d9" />
+
+Working timer with alarm noise
+
+<img width="318" height="73" alt="image" src="https://github.com/user-attachments/assets/b5f55cc3-8683-4364-afe6-59d35e144976" />
+
+Search with Google (not sponsored lol)
+
+<img width="467" height="84" alt="image" src="https://github.com/user-attachments/assets/470bf7fc-fe10-47af-9ea5-d6fb756e9e2f" />
+
+Stoinks (1 day graph) Yahoo Finance API
+
+<img width="452" height="123" alt="image" src="https://github.com/user-attachments/assets/7ef48059-1cfa-4dc8-90d7-ae9aa7deb2b4" />
+
+Weather dashboard (location blurred for privacy and it uses Mateo API)
+
+<img width="472" height="167" alt="image" src="https://github.com/user-attachments/assets/29754ecf-ca81-471e-8fab-6368b1cb5b02" />
+
+
+
+
+
+
+
+
+
   
 
 
