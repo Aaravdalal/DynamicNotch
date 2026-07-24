@@ -1176,7 +1176,7 @@ html, body {
   animation:wp-in .16s var(--ease);
 }
 @keyframes wp-in{from{opacity:0;transform:translateY(-6px) scale(0.97);}to{opacity:1;transform:none;}}
-.wp-title{font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px 3px;}
+.wp-title{font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:none;letter-spacing:0.05em;padding:4px 8px 3px;}
 .wp-item{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#111;transition:background .15s ease;}
 .wp-item:hover{background:rgba(0,0,0,0.06);}
 .wp-name{flex:1;}
