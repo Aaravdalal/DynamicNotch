@@ -119,13 +119,18 @@ class MediaMonitor extends EventEmitter {
         // Prefer SMTC's real duration; fall back to the art provider's.
         const durationMs = d.durationMs > 0 ? d.durationMs : (art.duration || 0);
 
+        // Prefer the thumbnail SMTC hands us — it's the exact art Windows shows
+        // for the playing media (album cover / YouTube frame), so it never fails
+        // the way the YouTube HTML scrape does. Fall back to the scraped art.
+        const artUrl = d.thumb ? d.thumb : (art.url || '');
+
         this.lastMediaInfo = {
             playing,
             paused,
             title: d.title,
             track: d.title,
             artist: d.artist || art.channelName || source,
-            artUrl: art.url || '',
+            artUrl,
             duration: durationMs,
             durationMs,
             positionMs: d.positionMs || 0,
@@ -228,43 +233,46 @@ class MediaMonitor extends EventEmitter {
 
 const monitor = new MediaMonitor();
 
-// Persistent PowerShell daemon that controls the CURRENT SMTC session directly.
-// Replaces the old global-media-key approach (keybd_event VK_MEDIA_*), which was
-// unreliable — the keys went to whatever app held media-key focus, not the
-// session shown in the notch, so play/pause/next/prev often did nothing or hit
-// the wrong app. Session control targets exactly what we're displaying.
-let controlPs = null;
-function getControlPs() {
-    if (!controlPs) {
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'media-control.ps1');
-        controlPs = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
-        controlPs.on('close', () => { controlPs = null; });
-        controlPs.on('error', () => { controlPs = null; });
-        if (controlPs.stderr) controlPs.stderr.on('data', () => {});
+// Persistent SMTC control process. Global media keys (the old approach) went to
+// whatever app had key focus and frequently controlled nothing; driving the
+// GlobalSystemMediaTransportControls session directly targets the exact player
+// we're displaying, so play/pause/next/prev/seek actually work. Kept warm so the
+// WinRT session manager loads once and each command has minimal latency.
+let ctrlPs = null;
+function getCtrlPs() {
+    if (ctrlPs) return ctrlPs;
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'media-control.ps1');
+    ctrlPs = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
+    ctrlPs.stderr.on('data', () => { /* WinRT warnings are noise */ });
+    ctrlPs.on('close', () => { ctrlPs = null; });
+    ctrlPs.on('error', () => { ctrlPs = null; });
+    return ctrlPs;
+}
+
+function sendCtrl(cmd) {
+    try {
+        getCtrlPs().stdin.write(cmd + '\n');
+    } catch (e) {
+        // Process died — drop the handle and try once more with a fresh one.
+        ctrlPs = null;
+        try { getCtrlPs().stdin.write(cmd + '\n'); } catch (e2) { console.error('controlMedia error:', e2.message); }
     }
-    return controlPs;
 }
 
 function controlMedia(action) {
-    if (!['playpause', 'play', 'pause', 'next', 'prev'].includes(action)) return;
-    try {
-        getControlPs().stdin.write(action + '\n');
-    } catch (e) {
-        controlPs = null; // pipe broke — it'll respawn on the next press
-        console.error('controlMedia error:', e.message);
-    }
+    if (['playpause', 'play', 'pause', 'next', 'prev'].includes(action)) sendCtrl(action);
 }
 
-// Seek the current SMTC session to positionMs. One-shot PowerShell — a little
-// latency, but seeks are occasional. The scrubber updates optimistically and
-// re-syncs to the real position on the next SMTC tick regardless.
+// Seek the current SMTC session to positionMs. The scrubber updates optimistically
+// and re-syncs to the real position on the next SMTC tick regardless.
 function seekMedia(positionMs) {
     const ms = Math.max(0, Math.round(positionMs || 0));
-    const scriptPath = path.join(__dirname, '..', 'scripts', 'seek-media.ps1');
-    try {
-        spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-PositionMs', String(ms)], { windowsHide: true });
-    } catch (e) { console.error('seekMedia error:', e.message); }
+    sendCtrl('seek ' + ms);
 }
+
+// Warm the control process at startup so the first play/pause / seek press isn't
+// stalled behind PowerShell + WinRT cold start.
+try { getCtrlPs(); } catch (e) {}
 
 module.exports = {
     getMediaInfo: () => monitor.getMediaInfo(),
@@ -272,7 +280,7 @@ module.exports = {
     seekMedia,
     destroyMediaMonitor: () => {
         monitor.destroy();
-        if (controlPs) { try { controlPs.stdin.end(); controlPs.kill(); } catch (e) {} controlPs = null; }
+        if (ctrlPs) { try { ctrlPs.kill(); } catch (e) {} ctrlPs = null; }
     },
     onMediaUpdate: (cb) => {
         monitor.on('update', cb);

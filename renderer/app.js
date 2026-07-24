@@ -36,11 +36,6 @@ let alarmActive = false; // timer has fired and is ringing until dismissed
 const notch = document.getElementById('notch');
 const collapsedView = document.getElementById('collapsedView');
 
-// The recording notch was scrapped — the notch no longer reacts to other apps
-// using the microphone. External timers (a "timer" Google search, the Focus
-// app) were already ignored, so there's nothing left to listen for. Voice
-// search in the dashboard search bar is a separate feature and still works.
-
 /* ─── Panel map ─── */
 const panelMap = {
   idle:            'panelIdle',
@@ -194,7 +189,7 @@ function expand() {
 
 function collapse() {
   if (!isExpanded) return;
-  if (currentState === 'startup') return; // Force keep expanded during boot animation
+  if (currentState === 'startup') return; // Force keep expanded
   if (alarmActive) return; // Ringing timer stays open so the ✕ is always reachable
   if (currentState === 'timer' && isTimerActive) return; // Running timer keeps its full panel
   // A widget mid-turn has a card lifted to position:absolute with pending timers
@@ -673,21 +668,24 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     }
     
     if (!controlledIframe) {
-      const isYouTube = mediaData && mediaData.source === 'YouTube';
+      const isYouTube = typeof mediaData !== 'undefined' && mediaData && mediaData.source === 'YouTube';
       if (isYouTube && (action === 'next' || action === 'prev')) {
-        // A YouTube video has no "tracks" — the skip buttons are ±10s seeks.
-        // Seek the SMTC session relative to where we are now, and move the
-        // scrubber optimistically (it re-syncs to the real position next tick).
-        const dur = musicDuration || (mediaData.durationMs || 0) / 1000;
-        let target = currentElapsed() + (action === 'next' ? 10 : -10);
-        target = Math.max(0, dur > 0 ? Math.min(dur, target) : target);
+        // A YouTube video isn't a playlist — skip-track makes no sense, so the
+        // "prev/next" buttons scrub ±10 seconds instead (matching the PiP player).
+        const delta = action === 'next' ? 10 : -10;
+        let target = currentElapsed() + delta;
+        if (target < 0) target = 0;
+        const durSec = (mediaData.durationMs || 0) / 1000;
+        if (durSec > 0) target = Math.min(durSec, target);
         window.notchAPI.seekMedia(Math.round(target * 1000));
+        // Move the scrubber optimistically; it re-syncs on the next SMTC tick.
         posBaseSec = target;
         posBaseAt = Date.now();
-        if (dur > 0) updateScrubberUI((target / dur) * 100, target, dur);
+        const dur = musicDuration > 0 ? musicDuration : durSec;
+        updateScrubberUI(dur > 0 ? (target / dur) * 100 : 0, target, dur);
       } else {
-        // Play/pause (and track skip for Spotify/Apple Music) on the real SMTC
-        // session — routed through direct session control, not global media keys.
+        // Spotify / background browser tabs, and YouTube play/pause: control the
+        // real SMTC session (reliable, targets the exact player).
         window.notchAPI.controlMedia(action);
         if (action === 'playpause') isLocalPaused = !isLocalPaused;
       }
@@ -744,10 +742,44 @@ const quickShareIcon = document.getElementById('quickShareIcon');
   // save to Liked Songs (music) or open PiP (YouTube video).
 
   const pStar = document.getElementById('shuffleBtn'); // panelMusic star
-  if(pStar) pStar.addEventListener('click', (e) => { e.stopPropagation(); handleStarClick(); });
+  if(pStar) pStar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const hasVideo = hasPipVideo();
+    if (hasVideo) {
+      // Open PiP Notch Player
+      forcedPanel = null;
+      notch.classList.remove('forced-full');
+      currentState = 'video';
+      notch.setAttribute('data-state', 'video');
+      showActivePanel();
+      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+    } else {
+      // Music (no video): save/unsave the song in the Liked Songs playlist.
+      const liked = toggleLikedSong();
+      applyStarFill(document.getElementById('shuffleBtn'), liked);
+      applyStarFill(document.getElementById('dashStarBtn'), liked);
+    }
+  });
 
   const dStar = document.getElementById('dashStarBtn'); // dashMusic star
-  if(dStar) dStar.addEventListener('click', (e) => { e.stopPropagation(); handleStarClick(); });
+  if(dStar) dStar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const hasVideo = hasPipVideo();
+    if (hasVideo) {
+      // Open PiP Notch Player
+      forcedPanel = null;
+      notch.classList.remove('forced-full');
+      currentState = 'video';
+      notch.setAttribute('data-state', 'video');
+      showActivePanel();
+      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+    } else {
+      // Music (no video): save/unsave the song in the Liked Songs playlist.
+      const liked = toggleLikedSong();
+      applyStarFill(document.getElementById('shuffleBtn'), liked);
+      applyStarFill(document.getElementById('dashStarBtn'), liked);
+    }
+  });
 
   // Call updateStarButtons initially and whenever mediaData changes
   // We'll call it from updateMusicUI
@@ -1692,7 +1724,10 @@ function getAverageRGB(img) {
 // A PiP video only exists for YouTube. Other sources (Spotify, local players)
 // report a track but nothing embeddable, so they keep the star.
 function hasPipVideo() {
-  return !!(mediaData && mediaData.videoId && mediaData.source === 'YouTube');
+  // Any YouTube source is a video → it always gets the PiP button, never the
+  // Liked-Songs star, even before we've resolved its videoId. (Previously this
+  // required videoId, so a slow/failed scrape left a star sitting on a video.)
+  return !!(mediaData && mediaData.source === 'YouTube');
 }
 
 /* ─── Liked Songs playlist ───
@@ -1739,79 +1774,53 @@ function applyStarFill(btn, liked) {
   btn.title = liked ? 'Remove from Liked Songs' : 'Add to Liked Songs';
 }
 
-const STAR_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
-const PIP_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
-
-// Keep the two star/PiP buttons in sync with the current track. Only rebuild the
-// glyph when it actually switches between star and PiP (tracked via dataset) —
-// the old code re-wrote the SVG on every media poll, which churned the element
-// a click could land on and made the fill flicker. Otherwise just recolour.
 function updateStarButtons() {
     const hasVideo = hasPipVideo();
+    const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    const pipSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><rect x="12" y="12" width="8" height="8" rx="2" ry="2" fill="currentColor"></rect></svg>';
+
     const liked = isSongLiked();
     [document.getElementById('shuffleBtn'), document.getElementById('dashStarBtn')].forEach(btn => {
       if (!btn) return;
-      const wantType = hasVideo ? 'pip' : 'star';
-      if (btn.dataset.iconType !== wantType) {
-        btn.innerHTML = hasVideo ? PIP_SVG : STAR_SVG;
-        btn.dataset.iconType = wantType;
-      }
+      const svg = btn.querySelector('svg');
+      if (!svg) return;
       if (hasVideo) {
+        svg.outerHTML = pipSvg;
         btn.style.color = 'rgba(255,255,255,0.5)';
         btn.title = 'Play in Notch PiP';
       } else {
-        applyStarFill(btn, liked); // fills solid green if the current song is saved
+        svg.outerHTML = starSvg;
+        applyStarFill(btn, liked); // fills if the current song is saved
       }
     });
   }
-
-// Shared star/PiP click behaviour for both the panel-music and dashboard buttons.
-// YouTube video → open the PiP player; anything else → toggle the Liked Songs
-// playlist and pop the star so the save is obviously registered.
-function handleStarClick() {
-  if (hasPipVideo()) {
-    forcedPanel = null;
-    notch.classList.remove('forced-full');
-    currentState = 'video';
-    notch.setAttribute('data-state', 'video');
-    showActivePanel();
-    openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
-    return;
-  }
-  const liked = toggleLikedSong();
-  [document.getElementById('shuffleBtn'), document.getElementById('dashStarBtn')].forEach(b => {
-    if (!b) return;
-    applyStarFill(b, liked);
-    b.style.transform = 'scale(1.28)';
-    setTimeout(() => { b.style.transform = ''; }, 160);
-  });
-}
   
-// YouTube in the notch has no track list — its skip buttons do ±10s seeks — so
-// swap the track-skip glyphs for replay-10 / forward-10 to match the behaviour.
-// (Official Material replay_10 / forward_10 paths.)
-function updateSkipButtons() {
-  const isYouTube = mediaData && mediaData.source === 'YouTube';
-  const back10 = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8zm-1.1 11H10v-3.3L9 13v-.7l1.8-.6h.1V16zm4.28-1.24c0 .32-.03.6-.1.82s-.17.42-.29.57-.28.26-.45.33-.37.1-.59.1-.41-.03-.59-.1-.33-.18-.46-.33-.23-.34-.3-.57-.11-.5-.11-.82v-.74c0-.32.03-.6.1-.82s.17-.42.29-.57.28-.26.45-.33.37-.1.59-.1.41.03.59.1.33.18.46.33.23.34.3.57.11.5.11.82v.74zm-.85-.86c0-.19-.01-.35-.04-.48s-.07-.23-.12-.31-.11-.14-.19-.17-.16-.05-.25-.05-.18.02-.25.05-.14.09-.19.17-.09.18-.12.31-.04.29-.04.48v.97c0 .19.01.35.04.48s.07.24.12.32.11.14.19.17.16.05.25.05.18-.02.25-.05.14-.09.19-.17.09-.19.11-.32.04-.29.04-.48v-.97z"/></svg>';
-  const fwd10 = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 13c0 3.31-2.69 6-6 6s-6-2.69-6-6 2.69-6 6-6v4l5-5-5-5v4c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8h-2zm-6.7 3H10v-3.3L9 13v-.7l1.8-.6h.1V16zm4.28-1.24c0 .32-.03.6-.1.82s-.17.42-.29.57-.28.26-.45.33-.37.1-.59.1-.41-.03-.59-.1-.33-.18-.46-.33-.23-.34-.3-.57-.11-.5-.11-.82v-.74c0-.32.03-.6.1-.82s.17-.42.29-.57.28-.26.45-.33.37-.1.59-.1.41.03.59.1.33.18.46.33.23.34.3.57.11.5.11.82v.74zm-.85-.86c0-.19-.01-.35-.04-.48s-.07-.23-.12-.31-.11-.14-.19-.17-.16-.05-.25-.05-.18.02-.25.05-.14.09-.19.17-.09.18-.12.31-.04.29-.04.48v.97c0 .19.01.35.04.48s.07.24.12.32.11.14.19.17.16.05.25.05.18-.02.25-.05.14-.09.19-.17.09-.19.11-.32.04-.29.04-.48v-.97z"/></svg>';
-  const prevSkip = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
-  const nextSkip = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>';
-  [document.getElementById('prevBtn'), document.getElementById('dashPrevBtn')].forEach(b => {
-    if (b) { b.innerHTML = isYouTube ? back10 : prevSkip; b.title = isYouTube ? 'Back 10 seconds' : 'Previous'; }
-  });
-  [document.getElementById('nextBtn'), document.getElementById('dashNextBtn')].forEach(b => {
-    if (b) { b.innerHTML = isYouTube ? fwd10 : nextSkip; b.title = isYouTube ? 'Forward 10 seconds' : 'Next'; }
-  });
-}
+  // The prev/next buttons mean "skip track" for a playlist source (Spotify) but
+  // "seek ±10s" for a single YouTube video, so swap the glyphs to match what the
+  // press will actually do — rewind-10 / forward-10 for YouTube, skip arrows else.
+  const SKIP_PREV_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
+  const SKIP_NEXT_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>';
+  const BACK10_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><path d="M10.86 15.94v-4.27h-.09l-1.77.63v.69l1.01-.31v3.26h.85zm2.68-4.27c-.29 0-.55.06-.75.18-.2.12-.37.28-.5.48-.13.2-.22.44-.28.7-.06.26-.09.53-.09.81v.71c0 .28.03.55.09.81.06.26.15.5.28.7.13.2.3.36.51.48.21.12.46.18.75.18s.55-.06.76-.18c.21-.12.37-.28.5-.48.13-.2.22-.44.28-.7.06-.26.09-.53.09-.81v-.71c0-.28-.03-.55-.09-.81-.06-.26-.15-.5-.28-.7-.13-.2-.3-.36-.51-.48-.21-.12-.46-.18-.76-.18zm.85 2.87c0 .17-.01.32-.04.45-.03.13-.07.24-.12.33-.05.09-.12.15-.2.2-.08.05-.19.06-.3.06s-.22-.02-.3-.06c-.08-.05-.15-.11-.21-.2-.05-.09-.09-.2-.12-.33-.03-.13-.04-.28-.04-.45v-1.07c0-.17.01-.32.04-.45.03-.13.06-.24.12-.32.05-.09.12-.15.21-.19.08-.05.19-.06.3-.06s.22.02.3.06c.08.05.15.11.2.19.06.08.09.19.12.32.03.13.04.28.04.45v1.07z"/></svg>';
+  const FWD10_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M4 13c0 4.4 3.6 8 8 8s8-3.6 8-8h-2c0 3.3-2.7 6-6 6s-6-2.7-6-6 2.7-6 6-6v4l5-5-5-5v4c-4.4 0-8 3.6-8 8z"/><path d="M10.86 15.94v-4.27h-.09l-1.77.63v.69l1.01-.31v3.26h.85zm2.68-4.27c-.29 0-.55.06-.75.18-.2.12-.37.28-.5.48-.13.2-.22.44-.28.7-.06.26-.09.53-.09.81v.71c0 .28.03.55.09.81.06.26.15.5.28.7.13.2.3.36.51.48.21.12.46.18.75.18s.55-.06.76-.18c.21-.12.37-.28.5-.48.13-.2.22-.44.28-.7.06-.26.09-.53.09-.81v-.71c0-.28-.03-.55-.09-.81-.06-.26-.15-.5-.28-.7-.13-.2-.3-.36-.51-.48-.21-.12-.46-.18-.76-.18zm.85 2.87c0 .17-.01.32-.04.45-.03.13-.07.24-.12.33-.05.09-.12.15-.2.2-.08.05-.19.06-.3.06s-.22-.02-.3-.06c-.08-.05-.15-.11-.21-.2-.05-.09-.09-.2-.12-.33-.03-.13-.04-.28-.04-.45v-1.07c0-.17.01-.32.04-.45.03-.13.06-.24.12-.32.05-.09.12-.15.21-.19.08-.05.19-.06.3-.06s.22.02.3.06c.08.05.15.11.2.19.06.08.09.19.12.32.03.13.04.28.04.45v1.07z"/></svg>';
+  function updateTransportIcons() {
+    const isYouTube = mediaData && mediaData.source === 'YouTube';
+    const prevSvg = isYouTube ? BACK10_SVG : SKIP_PREV_SVG;
+    const nextSvg = isYouTube ? FWD10_SVG : SKIP_NEXT_SVG;
+    [['prevBtn', prevSvg], ['dashPrevBtn', prevSvg], ['nextBtn', nextSvg], ['dashNextBtn', nextSvg]].forEach(([id, svg]) => {
+      const btn = document.getElementById(id);
+      if (btn && btn.innerHTML !== svg) btn.innerHTML = svg;
+      if (btn) btn.title = isYouTube ? (id.includes('prev') || id.includes('Prev') ? 'Back 10s' : 'Forward 10s') : (id.toLowerCase().includes('prev') ? 'Previous' : 'Next');
+    });
+  }
 
   function updateMusicUI() {
   const coverImg = document.getElementById('coverImg');
   const placeholder = document.getElementById('albumPlaceholder');
   const cAlbum = document.getElementById('cAlbumImg');
 
-  // Update star/PiP + skip buttons based on whether a YouTube video is playing.
+  // Update star/PiP buttons based on whether a YouTube video is available
   updateStarButtons();
-  updateSkipButtons();
+  updateTransportIcons();
 
   if (mediaData.playing || mediaData.paused) {
     const track = mediaData.track || mediaData.title;
@@ -1852,18 +1861,26 @@ function updateSkipButtons() {
     });
 
     if (mediaData.artUrl) {
-      coverImg.crossOrigin = 'Anonymous';
-      cAlbum.crossOrigin = 'Anonymous';
+      // SMTC thumbnails come through as file:// URLs, which have no CORS response
+      // — tagging them crossorigin=anonymous would make the browser refuse to
+      // load them (the blank-thumbnail bug). Only remote art gets the CORS tag
+      // (which also lets getAverageRGB read its colour for the accent).
+      const isLocal = /^file:/i.test(mediaData.artUrl);
+      const setArt = (img) => {
+        if (!img) return;
+        if (isLocal) img.removeAttribute('crossorigin'); else img.crossOrigin = 'Anonymous';
+        img.src = mediaData.artUrl;
+      };
       coverImg.onload = () => { document.documentElement.style.setProperty('--eq', getAverageRGB(coverImg)); };
-      coverImg.src = mediaData.artUrl;
+      setArt(coverImg);
       coverImg.style.display = 'block';
       placeholder.style.display = 'none';
-      cAlbum.src = mediaData.artUrl;
+      setArt(cAlbum);
       cAlbum.style.display = 'block';
       const dashImg = document.getElementById('dashCoverImg');
       const dashPh = document.getElementById('dashArtPlaceholder');
-      
-      if (dashImg) { dashImg.src = mediaData.artUrl; dashImg.style.display = 'block'; }
+
+      if (dashImg) { setArt(dashImg); dashImg.style.display = 'block'; }
       if (dashPh) { dashPh.style.display = 'none'; }
       
       // A video used to black out the album art behind a "Click to play"
@@ -1911,72 +1928,64 @@ function updateSkipButtons() {
   }
 }
 
-// Real system-audio level (0..100) from the WASAPI peak meter, refreshed ~20x/s
-// via onAudioPeak. The loop below turns it into moving bars.
+// The bars are driven by the real system-audio peak (WASAPI, via audio-meter.ps1
+// → onAudioPeak → updateVisualizerWithPeak). lastKnownPeak is the latest peak in
+// 0..100; the loop turns it into per-bar heights with a fast attack / slow release
+// so it reads like a live meter — silence stays flat, loud passages jump.
 let lastKnownPeak = 0;
 let visualizerFrame = null;
-let barLevels = []; // per-bar smoothed 0..1 heights, so bars fall/rise independently
+let barLevels = [];
 
 function startVisualizer() {
-  if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
+  if (visualizerFrame) return; // already running — don't stack rAF loops
   visualizerFrame = requestAnimationFrame(visualizerLoop);
 }
 
 function stopVisualizer() {
   if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
   visualizerFrame = null;
+  lastKnownPeak = 0;
   barLevels = [];
   document.querySelectorAll('.equalizer span, .c-eq span').forEach(s => {
-    s.style.height = s.parentElement.classList.contains('equalizer') ? '3px' : '2px';
+    s.style.transition = 'height 0.12s ease';
+    s.style.height = s.parentElement.classList.contains('equalizer') ? '4px' : '3px';
   });
 }
 
 function visualizerLoop() {
-  if (!mediaData.playing) {
-    stopVisualizer();
-    return;
-  }
+  if (!mediaData.playing) { stopVisualizer(); return; }
 
   const spans = document.querySelectorAll('.equalizer span, .c-eq span');
-  if (barLevels.length !== spans.length) barLevels = new Array(spans.length).fill(0);
-  const now = Date.now();
-
-  // Normalise the real peak into 0..1 with a mild boost so ordinary listening
-  // levels drive most of the bar range, then let it decay each frame so the
-  // bars visibly drop when the track quietens between the ~50ms peak updates.
-  const level = Math.min(1, (lastKnownPeak / 100) * 1.7);
-  lastKnownPeak *= 0.86;
-  if (lastKnownPeak < 0.4) lastKnownPeak = 0;
+  // Normalize the real peak to 0..1, with a gentle curve so quiet passages still
+  // register instead of sitting flat until something loud hits.
+  const level = Math.min(1, Math.pow(Math.max(0, lastKnownPeak) / 100, 0.6));
+  const t = Date.now() / 1000;
 
   spans.forEach((s, idx) => {
     const isBig = s.parentElement.classList.contains('equalizer');
-    const maxH = isBig ? 22 : 12;
-    const minH = isBig ? 3 : 2;
-
-    // Shape the single overall level into a per-bar target with a slow wobble,
-    // so the bars dance independently like a spectrum instead of moving as one
-    // solid block. Silence ⇒ all bars flat; louder ⇒ taller and livelier.
-    const wob = 0.5 + 0.5 * Math.sin(now / 95 + idx * 1.7) * Math.sin(now / 220 + idx * 0.6);
-    const target = level * Math.max(0, wob);
-
-    // Fast attack (jump up on a beat), slower release (fall smoothly) — the
-    // natural VU/spectrum feel that reads as "reacting to the music".
-    const cur = barLevels[idx];
-    barLevels[idx] = target > cur ? target : cur * 0.82 + target * 0.18;
-
+    const maxH = isBig ? 22 : 11;
+    const minH = isBig ? 4 : 3;
+    // A quick wobble so neighbouring bars aren't one flat block, all scaled by
+    // the real audio level — the movement is the music, not a fake animation.
+    const wobble = 0.55 + 0.45 * Math.sin(t * 9 + idx * 1.7);
+    const target = level * wobble;
+    if (barLevels[idx] == null) barLevels[idx] = 0;
+    // Fast attack, slower release.
+    const k = target > barLevels[idx] ? 0.6 : 0.16;
+    barLevels[idx] += (target - barLevels[idx]) * k;
     s.style.height = (minH + barLevels[idx] * (maxH - minH)).toFixed(1) + 'px';
-    s.style.transition = 'height 0.06s linear';
+    s.style.transition = 'height 0.04s linear';
   });
 
+  // Decay the held peak so a transient doesn't stick until the next sample.
+  lastKnownPeak *= 0.90;
   visualizerFrame = requestAnimationFrame(visualizerLoop);
 }
 
-// Attack: jump straight to a louder peak; the loop handles the decay/release.
 function updateVisualizerWithPeak(peak) {
+  // Keep the loudest recent sample; the loop decays it between updates.
   if (peak > lastKnownPeak) lastKnownPeak = peak;
 }
-
-// (Mic waveform visualizer removed along with the recording notch.)
 
 let musicDuration = 0;
 let musicElapsed = 0;

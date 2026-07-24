@@ -22,8 +22,35 @@ function Await($op, $type) {
 }
 
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
+[Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
 $mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]
 $propType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties]
+$streamType = [Windows.Storage.Streams.IRandomAccessStreamWithContentType]
+
+# Pull the session's own thumbnail (the real album art / video frame the OS holds)
+# straight from SMTC and cache it to a temp file, returning a file:// URL. This is
+# far more reliable than scraping YouTube's HTML for a guessed video — it's the
+# exact art Windows is showing for the playing media. 6-file rotation busts the
+# renderer's image cache without leaving junk piling up.
+$script:thumbCounter = 0
+function Save-Thumbnail($props) {
+    try {
+        $ref = $props.Thumbnail
+        if ($null -eq $ref) { return '' }
+        $stream = Await ($ref.OpenReadAsync()) ($streamType)
+        if ($null -eq $stream -or $stream.Size -eq 0) { return '' }
+        $size = [uint32]$stream.Size
+        $reader = [Windows.Storage.Streams.DataReader]::new($stream)
+        $null = Await ($reader.LoadAsync($size)) ([uint32])
+        $bytes = New-Object byte[] $size
+        $reader.ReadBytes($bytes)
+        $reader.Dispose(); $stream.Dispose()
+        $script:thumbCounter = ($script:thumbCounter + 1) % 6
+        $p = Join-Path $env:TEMP ("notch-thumb-" + $script:thumbCounter + ".jpg")
+        [System.IO.File]::WriteAllBytes($p, $bytes)
+        return ('file:///' + ($p -replace '\\', '/'))
+    } catch { return '' }
+}
 
 $mgr = $null
 try { $mgr = Await ($mgrType::RequestAsync()) ($mgrType) } catch {}
@@ -32,7 +59,7 @@ try { $mgr = Await ($mgrType::RequestAsync()) ($mgrType) } catch {}
 # and TryGetMediaPropertiesAsync is the one expensive call. Position/status come
 # fresh every tick from the cheap synchronous getters.
 $lastKey = ''
-$cachedTitle = ''; $cachedArtist = ''; $cachedAlbum = ''
+$cachedTitle = ''; $cachedArtist = ''; $cachedAlbum = ''; $cachedThumb = ''
 
 while ($true) {
     try {
@@ -58,6 +85,7 @@ while ($true) {
                     $cachedTitle = [string]$props.Title
                     $cachedArtist = [string]$props.Artist
                     $cachedAlbum = [string]$props.AlbumTitle
+                    $cachedThumb = Save-Thumbnail $props
                 } catch {}
                 $script:lastAppId = $appId
                 $script:lastDur = $durMs
@@ -69,6 +97,7 @@ while ($true) {
                     $cachedTitle = [string]$props.Title
                     $cachedArtist = [string]$props.Artist
                     $cachedAlbum = [string]$props.AlbumTitle
+                    $cachedThumb = Save-Thumbnail $props
                 } catch {}
             }
 
@@ -80,6 +109,7 @@ while ($true) {
                 status     = $status
                 positionMs = $posMs
                 durationMs = $durMs
+                thumb      = $cachedThumb
             }
             Write-Output ("SMTC|" + ($obj | ConvertTo-Json -Compress))
         }
