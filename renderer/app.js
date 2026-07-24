@@ -637,33 +637,16 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     
     let controlledIframe = false;
     if (typeof mediaData !== 'undefined' && mediaData && mediaData.source === 'YouTube') {
-      const iframes = ['mainYtIframe'];
-      for (let id of iframes) {
-        const iframe = document.getElementById(id);
-        if (iframe && iframe.src && iframe.style.display !== 'none' && iframe.contentWindow) {
-          if (action === 'playpause') {
-            // Ask the player what it is doing rather than toggling a local
-            // flag, which drifted every time playback changed behind our back
-            // (a video ending, an ad, or the PiP controls being used instead).
-            const func = pipState.playing ? 'pauseVideo' : 'playVideo';
-            isLocalPaused = pipState.playing;
-            iframe.contentWindow.postMessage(JSON.stringify({event: 'command', func: func}), '*');
-            setTimeout(pipSubscribe, 60);
-          } else if (action === 'next' || action === 'prev') {
-            const delta = action === 'next' ? 10 : -10;
-            const target = Math.max(0, pipState.duration
-              ? Math.min(pipState.duration, pipState.time + delta)
-              : pipState.time + delta);
-            iframe.contentWindow.postMessage(JSON.stringify({
-              event: 'command', func: 'seekTo', args: [target, true]
-            }), '*');
-            pipState.time = target;
-            pipPaint();
-            setTimeout(pipSubscribe, 60);
-          }
-          controlledIframe = true;
-          break; // only control the visible one
-        }
+      const iframe = document.getElementById('mainYtIframe');
+      // Only play/pause is ours to route when a PiP video is loaded — seeking and
+      // everything else belong to the embed's native controls. (next/prev fall
+      // through to the ±10s SMTC seek below.)
+      if (iframe && iframe.src && iframe.contentWindow && action === 'playpause') {
+        const func = pipState.playing ? 'pauseVideo' : 'playVideo';
+        isLocalPaused = pipState.playing;
+        iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func }), '*');
+        setTimeout(pipSubscribe, 60);
+        controlledIframe = true;
       }
     }
     
@@ -746,13 +729,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     e.stopPropagation();
     const hasVideo = hasPipVideo();
     if (hasVideo) {
-      // Open PiP Notch Player
-      forcedPanel = null;
-      notch.classList.remove('forced-full');
-      currentState = 'video';
-      notch.setAttribute('data-state', 'video');
-      showActivePanel();
-      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+      openPipFromMedia();
     } else {
       // Music (no video): save/unsave the song in the Liked Songs playlist.
       const liked = toggleLikedSong();
@@ -766,13 +743,7 @@ const quickShareIcon = document.getElementById('quickShareIcon');
     e.stopPropagation();
     const hasVideo = hasPipVideo();
     if (hasVideo) {
-      // Open PiP Notch Player
-      forcedPanel = null;
-      notch.classList.remove('forced-full');
-      currentState = 'video';
-      notch.setAttribute('data-state', 'video');
-      showActivePanel();
-      openPipVideo(mediaData.videoId, mediaData.track || mediaData.title, mediaData.artist, mediaData.artUrl);
+      openPipFromMedia();
     } else {
       // Music (no video): save/unsave the song in the Liked Songs playlist.
       const liked = toggleLikedSong();
@@ -2786,26 +2757,11 @@ if (searchGoogleIcon) {
    the scrub bar, and those only come back from the player itself. Commands go
    out as {event:'command'}; the player answers with 'infoDelivery' payloads
    carrying currentTime, duration and playerState. */
-let pipState = { time: 0, duration: 0, playing: false, muted: false, loop: false, videoId: null };
+// The embed shows YouTube's native controls (play/scrub/time/volume/CC/quality/
+// fullscreen), so we no longer draw or drive a scrubber. We keep just enough
+// state to mirror play/mute back to the other panels and to build the chrome.
+let pipState = { playing: false, muted: false, cc: false, videoId: null };
 let pipPoll = null;
-let pipTick = null;
-
-// The player reports roughly once a second, so between reports the scrub bar
-// sat frozen and then jumped. Advance it against the wall clock locally and let
-// each incoming report snap it back to the truth.
-function pipStartTick() {
-  clearInterval(pipTick);
-  let last = Date.now();
-  pipTick = setInterval(() => {
-    const now = Date.now();
-    const dt = (now - last) / 1000;
-    last = now;
-    if (pipState.playing && pipState.duration > 0) {
-      pipState.time = Math.min(pipState.duration, pipState.time + dt);
-      pipPaint();
-    }
-  }, 100);
-}
 
 // The music and dashboard panels have their own play buttons; they must show
 // what the player is really doing, not what someone last clicked.
@@ -2817,36 +2773,6 @@ function syncPlayIcons() {
     const svg = btn && btn.querySelector('svg');
     if (svg) svg.outerHTML = pipState.playing ? pauseSvg : playSvg;
   });
-}
-
-function pipCmd(func, args) {
-  const frame = document.getElementById('mainYtIframe');
-  if (!frame || !frame.contentWindow || !frame.src) return;
-  frame.contentWindow.postMessage(JSON.stringify({
-    event: 'command', func: func, args: args || []
-  }), '*');
-}
-
-function pipFmt(sec) {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const m = Math.floor(sec / 60), r = Math.floor(sec % 60);
-  return m + ':' + String(r).padStart(2, '0');
-}
-
-function pipPaint() {
-  const t = document.getElementById('pipTime');
-  const fill = document.getElementById('pipFill');
-  const dot = document.getElementById('pipDot');
-  const icon = document.getElementById('pipPlayIcon');
-  if (t) t.textContent = pipFmt(pipState.time) + ' / ' + pipFmt(pipState.duration);
-  const pct = pipState.duration > 0
-    ? Math.max(0, Math.min(100, (pipState.time / pipState.duration) * 100)) : 0;
-  if (fill) fill.style.width = pct + '%';
-  if (dot) dot.style.left = pct + '%';
-  // Pause bars while playing, play triangle while stopped.
-  if (icon) icon.innerHTML = pipState.playing
-    ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>'
-    : '<path d="M8 5v14l11-7z"/>';
 }
 
 // The player only reports back to listeners that have announced themselves.
@@ -2871,103 +2797,72 @@ window.addEventListener('message', (e) => {
   try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
   if (!data || data.event !== 'infoDelivery' || !data.info) return;
   const i = data.info;
-  if (typeof i.currentTime === 'number') pipState.time = i.currentTime;
-  if (typeof i.duration === 'number' && i.duration > 0) pipState.duration = i.duration;
   if (typeof i.muted === 'boolean') pipState.muted = i.muted;
   if (typeof i.playerState === 'number') {
+    // The native player owns transport; we only mirror its play-state so the
+    // music/dashboard panels' own play buttons stay truthful.
     pipState.playing = i.playerState === 1;
-    // One source of truth: the panel buttons follow the player.
     isLocalPaused = !pipState.playing;
     if (typeof mediaData !== 'undefined' && mediaData) mediaData.paused = isLocalPaused;
     syncPlayIcons();
-    // 0 = ended; the loop toggle in the footer restarts it.
-    if (i.playerState === 0 && pipState.loop) pipCmd('seekTo', [0, true]);
   }
-  pipPaint();
 });
 
-// Open a video in the PiP panel. Everything that used to assign iframe.src
-// directly now routes through here, so the chrome is always filled in.
-function openPipVideo(videoId, title, channel, art) {
+function showPipLoading(on) {
+  const veil = document.getElementById('pipLoading');
+  if (veil) veil.classList.toggle('hidden', !on);
+}
+
+// Point the embed at a video and let YouTube's native controls take over.
+function loadPipVideo(videoId) {
   const frame = document.getElementById('mainYtIframe');
   if (!frame || !videoId) return;
-  pipState = { time: 0, duration: 0, playing: true, muted: false, loop: pipState.loop, videoId: videoId };
-
-  const t = document.getElementById('pipTitle');
-  const c = document.getElementById('pipChannel');
-  const a = document.getElementById('pipAvatar');
-  if (t) t.textContent = title || 'YouTube';
-  if (c) c.textContent = channel || 'YouTube';
-  if (a) {
-    if (art) { a.style.backgroundImage = 'url("' + art + '")'; a.textContent = ''; }
-    else { a.style.backgroundImage = ''; a.textContent = (channel || 'Y').trim().charAt(0).toUpperCase(); }
-  }
-  pipPaint();
+  pipState.videoId = videoId;
+  pipState.playing = true;
+  showPipLoading(true);
 
   frame.src = 'https://www.youtube-nocookie.com/embed/' + videoId +
-    '?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1';
-  frame.onload = () => { pipSubscribe(); setTimeout(pipSubscribe, 600); };
+    '?autoplay=1&enablejsapi=1&rel=0&playsinline=1&fs=1&iv_load_policy=3&color=white';
+  frame.onload = () => { showPipLoading(false); pipSubscribe(); setTimeout(pipSubscribe, 600); };
 
   clearInterval(pipPoll);
-  // The player pushes updates while playing but goes quiet when paused or
-  // buffering; a slow poll keeps the bar honest without spamming the frame.
-  pipPoll = setInterval(pipSubscribe, 1000);
-  pipStartTick();
+  // The player only reports to announced listeners; a slow re-subscribe keeps the
+  // play-state mirror alive after pauses/buffering without spamming the frame.
+  pipPoll = setInterval(pipSubscribe, 1500);
+}
+
+// Entry point from the PiP button. Opens the panel immediately with a spinner,
+// then resolves the real videoId (the background scrape often hasn't got one) and
+// starts playback. Doing the lookup here — not before — is why the button used to
+// look dead: a null id silently did nothing.
+async function openPipFromMedia() {
+  forcedPanel = null;
+  notch.classList.remove('forced-full');
+  currentState = 'video';
+  notch.setAttribute('data-state', 'video');
+  showActivePanel();
+  showPipLoading(true);
+
+  let videoId = mediaData.videoId;
+  if (!videoId && window.notchAPI.resolveVideoId) {
+    const title = mediaData.track || mediaData.title || '';
+    const channel = (mediaData.artist && mediaData.artist !== mediaData.source) ? mediaData.artist : '';
+    const q = channel ? (title + ' ' + channel) : title;
+    try { videoId = await window.notchAPI.resolveVideoId(q); } catch (e) { videoId = null; }
+  }
+  // The user may have closed PiP while we were resolving.
+  if (currentState !== 'video') return;
+  if (!videoId) { closePipVideo(); return; }
+  loadPipVideo(videoId);
 }
 
 function closePipVideo() {
   const frame = document.getElementById('mainYtIframe');
   if (frame) { frame.onload = null; frame.src = ''; }
   clearInterval(pipPoll);
-  clearInterval(pipTick);
-  pipPoll = pipTick = null;
+  pipPoll = null;
   pipState.playing = false;
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-  const on = (id, fn) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', (ev) => { ev.stopPropagation(); fn(el, ev); });
-  };
-  on('pipPlayBtn', () => {
-    pipCmd(pipState.playing ? 'pauseVideo' : 'playVideo');
-    // Flip optimistically so the button answers instantly, then ask the player
-    // right away — its reply overrides this within a frame or two.
-    pipState.playing = !pipState.playing;
-    pipPaint();
-    setTimeout(pipSubscribe, 60);
-  });
-  on('pipPrevBtn', () => pipCmd('seekTo', [Math.max(0, pipState.time - 10), true]));
-  on('pipNextBtn', () => pipCmd('seekTo', [pipState.time + 10, true]));
-  on('pipMuteBtn', (el) => {
-    pipState.muted = !pipState.muted;
-    pipCmd(pipState.muted ? 'mute' : 'unMute');
-    el.classList.toggle('active', pipState.muted);
-  });
-  on('pipLoopBtn', (el) => {
-    pipState.loop = !pipState.loop;
-    el.classList.toggle('active', pipState.loop);
-  });
-  on('pipOpenBtn', () => {
-    if (pipState.videoId && window.notchAPI) {
-      window.notchAPI.openUrl('https://www.youtube.com/watch?v=' + pipState.videoId);
-    }
-  });
-
-  // Scrub: map the click position along the track to a time.
-  const track = document.getElementById('pipTrack');
-  if (track) {
-    track.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      if (!pipState.duration) return;
-      const r = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
-      pipState.time = ratio * pipState.duration;
-      pipCmd('seekTo', [pipState.time, true]);
-      pipPaint();
-    });
-  }
-});
 
 // ─── Weather glyphs ───
 // Flat two-tone icons in the style of the reference sheet: a warm yellow sun,

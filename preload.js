@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// The renderer's hover machinery calls setIgnoreMouse() on virtually every
+// mousemove. Each send triggers setIgnoreMouseEvents + setFocusable +
+// setAlwaysOnTop in main — re-asserting the topmost band dozens of times a
+// second, which showed as constant hover jitter/lag. Dedupe here so the IPC
+// only fires when the click-through state actually flips. Main starts the
+// window with setIgnoreMouseEvents(true), so we seed the same value.
+let _lastIgnoreMouse = true;
+
 contextBridge.exposeInMainWorld('notchAPI', {
   getMedia: () => ipcRenderer.invoke('get-media'),
   controlMedia: (action) => ipcRenderer.invoke('control-media', action),
@@ -10,7 +18,12 @@ contextBridge.exposeInMainWorld('notchAPI', {
   startSpeechRecognition: () => ipcRenderer.invoke('start-speech-recognition'),
   transcribeAudio: (pcmData) => ipcRenderer.invoke('transcribe-audio', pcmData),
   getBattery: () => ipcRenderer.invoke('get-battery'),
-  setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
+  setIgnoreMouse: (ignore) => {
+    ignore = !!ignore;
+    if (ignore === _lastIgnoreMouse) return; // no state change → skip the IPC storm
+    _lastIgnoreMouse = ignore;
+    ipcRenderer.send('set-ignore-mouse', ignore);
+  },
   focusWindow: () => ipcRenderer.send('focus-window'),
   onCursorPos: (callback) => {
     ipcRenderer.on('cursor-pos', (event, pos) => callback(pos));
@@ -71,6 +84,7 @@ contextBridge.exposeInMainWorld('notchAPI', {
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
   selectAttachment: () => ipcRenderer.invoke('select-attachment'),
   getYoutubeStream: (id) => ipcRenderer.invoke('get-youtube-stream', id),
+  resolveVideoId: (query) => ipcRenderer.invoke('resolve-video-id', query),
   fetchWeather: (city) => ipcRenderer.invoke('fetch-weather', city),
   getStocks: (opts) => ipcRenderer.invoke('get-stocks', opts),
   simulateWinH: () => ipcRenderer.invoke('simulate-win-h'),

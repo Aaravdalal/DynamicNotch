@@ -4,7 +4,7 @@ const path = require('path');
 let lastApp = null;
 let monitorProcess = null;
 
-function startForegroundMonitor(excludePid) {
+function startForegroundMonitor(excludePid, onChange) {
   if (monitorProcess) return;
 
   const scriptPath = path.join(__dirname, '..', 'scripts', 'foreground-monitor.ps1');
@@ -23,6 +23,13 @@ function startForegroundMonitor(excludePid) {
           const parts = str.substring(6).split('|');
           if (parts.length === 2) {
             lastApp = { path: parts[0], name: parts[1] };
+          }
+          // Fire on every foreground change (even ones we can't parse) so the
+          // caller can re-assert the notch's topmost band and force a repaint
+          // the instant another app (e.g. Chrome) takes focus — otherwise the
+          // transparent overlay shows a blank frame until the slow poll catches up.
+          if (typeof onChange === 'function') {
+            try { onChange(lastApp); } catch (e) {}
           }
         }
       }

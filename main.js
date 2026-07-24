@@ -123,7 +123,13 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
-      autoplayPolicy: 'no-user-gesture-required'
+      autoplayPolicy: 'no-user-gesture-required',
+      // Chromium throttles (and, for a transparent always-on-top overlay, blanks)
+      // a window the instant it loses focus. Clicking any other app made the
+      // notch vanish until the 300ms pinTop timer forced a repaint — the
+      // "goes away for a second and comes back" flicker. Keep it painting so it
+      // stays put, and so its animations never stutter while unfocused.
+      backgroundThrottling: false
     },
   });
 
@@ -150,16 +156,16 @@ function createWindow() {
 
   // ─── Keep the notch pinned to the very top ───
   // Alt-tabbing activates another window, which Windows briefly floats above
-  // even topmost windows. Re-asserting topmost AND forcing the window back to
-  // the front of the z-order recovers it. A slow timer left a visible dip
-  // before recovery — poll fast so the notch never appears to fall behind.
-  // moveTop() is safe here because the window is non-focusable, so it can't
-  // steal activation from whatever the user just switched to.
+  // even topmost windows. Re-asserting the 'screen-saver' topmost band recovers
+  // it. We deliberately do NOT call moveTop() here: it forces a z-order restack
+  // that flashes the window on Windows, and because the notch becomes focusable
+  // while hovered, every click on it fired a focus event → moveTop() → a visible
+  // flicker on every click. setAlwaysOnTop alone keeps it above normal windows
+  // without the restack.
   const pinTop = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     try {
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
-      mainWindow.moveTop();
     } catch (e) {}
   };
   alwaysOnTopInterval = setInterval(pinTop, 300);
@@ -1168,11 +1174,52 @@ app.whenReady().then(() => {
   ipcMain.handle('open-url', (_, url) => {
     require('electron').shell.openExternal(url);
   });
+
+  // Resolve a YouTube videoId from a title/artist at the moment PiP is opened.
+  // The background art scrape is best-effort and often misses, which left the PiP
+  // button doing nothing (openPipVideo bails on a null id). Doing it here, in the
+  // main process, dodges the renderer's CORS wall and uses browser-like headers +
+  // a consent cookie so YouTube returns real results instead of a consent page.
+  ipcMain.handle('resolve-video-id', async (_, query) => {
+    if (!query) return null;
+    try {
+      const fetch = require('node-fetch');
+      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=en&gl=US`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cookie': 'CONSENT=YES+1'
+        }
+      });
+      clearTimeout(timeout);
+      const html = await res.text();
+      let m = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+      if (!m) m = html.match(/watch\?v=([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   createWindow();
   createTray();
 
   startHeartbeat();
-  startForegroundMonitor(process.pid);
+  // The instant any other app (Chrome, etc.) takes focus, re-assert the topmost
+  // band and force a repaint. Clicking Chrome otherwise left the transparent
+  // notch showing a blank frame until the 300ms pinTop poll refilled it — the
+  // "disappears and comes back quickly" flicker.
+  startForegroundMonitor(process.pid, () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.webContents.invalidate();
+    } catch (e) {}
+  });
 
   globalShortcut.register('CommandOrControl+M', () => {
     safeSend('mock-message');

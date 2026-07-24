@@ -59,94 +59,59 @@ html, body {
 /* Expanded states */
 .notch.expanded{cursor:default}
 .notch.collapsed[data-state="timer"]{width:110px}
-.notch.expanded[data-state="video"]{width:384px;height:272px;border-radius:0 0 20px 20px}
-.notch.expanded[data-state="video"] #panelVideo{display:flex;opacity:1;}
+/* Video lives in a proper notch shell — flush square top with the concave side
+   wings, deeply curved bottom: the same silhouette as the idle notch, sized 16:9.
+   (Wings are deliberately KEPT here, unlike the old detached-card look.) */
+.notch.expanded[data-state="video"]{width:392px;height:230px;border-radius:0 0 24px 24px;background:#000}
+.notch.expanded[data-state="video"] #panelVideo{display:block;opacity:1;}
 /* ═══ PiP VIDEO PLAYER ═══
-   Chrome around the YouTube embed: who is playing, where you are in it, and
-   controls. The panel used to be the bare iframe, which meant no title, no
-   channel, no progress and no way to scrub. */
+   Just the YouTube embed filling the notch, corners rounded. Its native controls
+   (play, scrub, time, volume, captions, quality, fullscreen) do everything; we
+   only add a loading veil and a hover-in close button. */
 .panel-video{
-  width:100%;height:100%;display:none;flex-direction:column;opacity:0;
-  transition:opacity .3s ease;box-sizing:border-box;position:relative;
-  background:#0f0f0f;padding:9px 11px 8px;gap:7px;
+  width:100%;height:100%;display:none;opacity:0;position:relative;
+  transition:opacity .3s ease;box-sizing:border-box;
+  /* The panel IS the black bezel; the rounded screen is inset inside it. */
+  background:#000;border-radius:0 0 24px 24px;
 }
-.pip-head{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
-.pip-avatar{
-  width:26px;height:26px;flex:0 0 auto;border-radius:50%;
-  background:linear-gradient(145deg,#5b6472,#333a45);
-  color:#fff;font-size:12px;font-weight:700;
+/* The actual rounded video "screen". The bezel is the inset gap around it. */
+.pip-screen{
+  position:absolute;inset:7px;border-radius:11px;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(0,0,0,0.85),0 2px 8px rgba(0,0,0,0.5);
+  z-index:0;
+  /* Chromium composites the cross-origin YouTube video on its own GPU layer that
+     border-radius + overflow alone can't reach — the player kept square corners.
+     A solid mask (fully opaque, so no visual change) forces THIS wrapper onto its
+     own composited surface that clips the video to the rounded rect. translateZ
+     is a second belt to guarantee the compositing promotion. */
+  -webkit-mask-image: radial-gradient(#fff, #fff);
+          mask-image: radial-gradient(#fff, #fff);
+  transform: translateZ(0);
+}
+.pip-screen iframe{
+  width:100%;height:100%;border:none;display:block;
+}
+.pip-loading{
+  position:absolute;inset:7px;border-radius:11px;z-index:2;
   display:flex;align-items:center;justify-content:center;
-  background-size:cover;background-position:center;
+  background:#000;transition:opacity .25s ease;
 }
-.pip-meta{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25;}
-.pip-title{
-  font-size:12.5px;font-weight:700;color:#fff;letter-spacing:-0.1px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+.pip-loading.hidden{opacity:0;pointer-events:none;}
+.pip-spinner{
+  width:26px;height:26px;border-radius:50%;
+  border:3px solid rgba(255,255,255,0.18);border-top-color:#f00;
+  animation:pipSpin .8s linear infinite;
 }
-.pip-channel{
-  font-size:10.5px;font-weight:500;color:rgba(255,255,255,0.55);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+@keyframes pipSpin{to{transform:rotate(360deg);}}
+.pip-close-float{
+  position:absolute;top:16px;right:16px;width:24px;height:24px;padding:0;border:none;
+  border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;z-index:3;
+  opacity:0;transition:opacity .18s ease,background .15s ease;
 }
-.pip-icon{
-  width:22px;height:22px;flex:0 0 auto;padding:0;border:none;border-radius:50%;
-  background:transparent;color:rgba(255,255,255,0.72);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background .15s ease,color .15s ease;
-}
-.pip-icon svg{width:14px;height:14px;}
-.pip-icon:hover{background:rgba(255,255,255,0.14);color:#fff;}
-.pip-icon.active{color:#3ea6ff;}
-.pip-close:hover{background:#e0392b;color:#fff;}
-
-.pip-stage{
-  position:relative;flex:1;min-height:0;border-radius:10px;overflow:hidden;
-  background:#000;
-}
-.pip-stage iframe{width:100%;height:100%;border:none;display:block;}
-/* Sits over the video, so it must not swallow clicks meant for the player. */
-.pip-time{
-  position:absolute;left:7px;bottom:6px;pointer-events:none;
-  font-size:10px;font-weight:600;color:#fff;
-  background:rgba(0,0,0,0.62);padding:2px 6px;border-radius:5px;
-  font-variant-numeric:tabular-nums;
-}
-
-/* YouTube's own red scrub bar, with a handle that appears on hover. */
-.pip-track{
-  position:relative;flex:0 0 auto;height:11px;cursor:pointer;
-  display:flex;align-items:center;
-}
-.pip-track::before{
-  content:'';position:absolute;left:0;right:0;height:3px;border-radius:2px;
-  background:rgba(255,255,255,0.22);
-}
-.pip-fill{
-  position:absolute;left:0;height:3px;width:0;border-radius:2px;background:#f00;
-}
-.pip-dot{
-  position:absolute;width:9px;height:9px;border-radius:50%;background:#f00;
-  left:0;transform:translateX(-50%) scale(0);transition:transform .14s ease;
-}
-.pip-track:hover .pip-dot{transform:translateX(-50%) scale(1);}
-
-.pip-foot{display:flex;align-items:center;gap:4px;flex:0 0 auto;}
-.pip-ctrl{
-  width:24px;height:24px;padding:0;border:none;border-radius:50%;
-  background:transparent;color:rgba(255,255,255,0.85);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background .15s ease;
-}
-.pip-ctrl svg{width:15px;height:15px;}
-.pip-ctrl:hover{background:rgba(255,255,255,0.14);}
-.pip-ctrl.pip-play svg{width:19px;height:19px;}
-.pip-brand{
-  margin-left:auto;display:flex;align-items:center;gap:4px;
-  font-size:10.5px;font-weight:700;color:rgba(255,255,255,0.75);letter-spacing:-0.2px;
-}
-.pip-brand svg{width:16px;height:11px;}
-.panel-video:hover #closeVideoBtn {
-  opacity: 1;
-}
+.pip-close-float svg{width:14px;height:14px;}
+.pip-close-float:hover{background:#e0392b;}
+.panel-video:hover .pip-close-float{opacity:1;}
 .yt-play-btn:hover, .yt-pip-btn:hover {
   background: rgba(255, 255, 255, 0.4) !important;
 }

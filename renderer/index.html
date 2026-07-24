@@ -484,49 +484,16 @@
       </div>
       <!-- Picture-in-picture YouTube player. The iframe alone had no title,
            channel, progress or controls — everything below is real chrome around it. -->
+      <!-- PiP: just the YouTube embed filling the notch, corners rounded. Its own
+           native controls handle everything; a close button fades in on hover. -->
       <div class="panel panel-video" id="panelVideo">
-        <div class="pip-head">
-          <div class="pip-avatar" id="pipAvatar">Y</div>
-          <div class="pip-meta">
-            <div class="pip-title" id="pipTitle">YouTube</div>
-            <div class="pip-channel" id="pipChannel">Playing</div>
-          </div>
-          <button class="pip-icon" id="pipMuteBtn" type="button" title="Mute">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
-          </button>
-          <button class="pip-icon" id="pipLoopBtn" type="button" title="Loop">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          </button>
-          <button class="pip-icon" id="pipOpenBtn" type="button" title="Open in YouTube">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </button>
-          <button class="pip-icon pip-close" id="closeVideoBtn" type="button" title="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div class="pip-stage" id="pipStage">
+        <div class="pip-screen">
           <iframe id="mainYtIframe" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-          <span class="pip-time" id="pipTime">0:00 / 0:00</span>
         </div>
-        <div class="pip-track" id="pipTrack" title="Seek">
-          <div class="pip-fill" id="pipFill"></div>
-          <span class="pip-dot" id="pipDot"></span>
-        </div>
-        <div class="pip-foot">
-          <button class="pip-ctrl" id="pipPrevBtn" type="button" title="Back 10s">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
-          </button>
-          <button class="pip-ctrl pip-play" id="pipPlayBtn" type="button" title="Play/Pause">
-            <svg id="pipPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </button>
-          <button class="pip-ctrl" id="pipNextBtn" type="button" title="Forward 10s">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zM12.5 12L4 6v12l8.5-6z"/></svg>
-          </button>
-          <span class="pip-brand">
-            <svg viewBox="0 0 24 17" aria-hidden="true"><path d="M23.5 2.7a3 3 0 0 0-2.1-2.1C19.5 0 12 0 12 0S4.5 0 2.6.6A3 3 0 0 0 .5 2.7 31 31 0 0 0 0 8.5a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-5.8 31 31 0 0 0-.5-5.8z" fill="#f00"/><path d="M9.5 12.1l6.3-3.6-6.3-3.6z" fill="#fff"/></svg>
-            YouTube
-          </span>
-        </div>
+        <div class="pip-loading" id="pipLoading"><span class="pip-spinner"></span></div>
+        <button class="pip-close-float" id="closeVideoBtn" type="button" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
       <div class="panel panel-pill" id="panelTimer" style="display: none; align-items: center; justify-content: space-between; padding: 0 16px; width: 100%; height: 100%; box-sizing: border-box;">
         <div class="timer-left" style="display: flex; gap: 10px; align-items: center;">
