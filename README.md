@@ -37,7 +37,13 @@ Dynamic Notch is an Electron app, so you run it with Node. It takes about a minu
    ```
 To close the notch control + c to quit.
 
-**EXE COMING SOON**
+**EXE RELEASED!**
+Just to be transparent I struggled to make it an exe so asked my dad who also didn't get it so we ended up asking claude. Just would like to be transparent there. Hence why it also added claude as a contributor even though it only contributed to exe.
+
+Download exe first and then install program. It will run automatically and then to quit just simply click the arrow icon next to wifi on windows and then see dynamic notch icon and then 2 finger click and click quit.
+
+<img width="591" height="403" alt="image" src="https://github.com/user-attachments/assets/6b5e2603-4994-4dcd-8971-12e341872076" />
+
 
 ## How to operate the notch?
 
