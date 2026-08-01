@@ -42,6 +42,8 @@ Just to be transparent I struggled to make it an exe so asked my dad who also di
 
 Download exe first and then install program. It will run automatically and then to quit just simply click the arrow icon next to wifi on windows and then see dynamic notch icon and then 2 finger click and click quit.
 
+IF IT ASKS WINDOWS PROTECTED THIS PROGRAM FROM RUNNING CLICK RUN ANYWAY PROGRAM IS SAFE.
+
 <img width="591" height="403" alt="image" src="https://github.com/user-attachments/assets/6b5e2603-4994-4dcd-8971-12e341872076" />
 
 
