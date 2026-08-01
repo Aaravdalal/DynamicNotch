@@ -43,28 +43,34 @@ jobs:
           Write-Host "Setting package version to $version"
           npm version $version --no-git-tag-version --allow-same-version
 
-      # Cross-builds arm64 from the x64 runner. Safe here because the app has
-      # no native (node-gyp) dependencies -- only the Electron binary differs.
-      # Each arch is built in its own invocation: passing both at once makes
-      # electron-builder additionally emit a ~2x-size combined-arch installer.
-      - name: Build x64 + arm64
+      # x64 only. Windows on ARM runs x64 binaries under emulation, and the app
+      # has no native (node-gyp) dependencies, so a native arm64 build buys
+      # nothing. It also did not work: the arm64 NSIS installer shipped a
+      # complete app-arm64.7z payload but extracted only the uninstaller on ARM
+      # hardware -- its architecture check selected a package name that a
+      # single-arch installer does not contain.
+      - name: Build
+        shell: pwsh
+        run: npx electron-builder --win --x64 --publish never
+
+      # Publishing is deliberately separate from building. electron-builder's
+      # own publisher creates a draft per invocation and cannot find an existing
+      # draft by tag (the GitHub API omits drafts from get-release-by-tag), so
+      # publishing from the build step produced duplicate drafts for one tag.
+      - name: Publish draft release
+        if: github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $publish = if ('${{ github.ref_type }}' -eq 'tag') { 'always' } else { 'never' }
-          npx electron-builder --win --x64 --publish $publish
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx electron-builder --win --arm64 --publish $publish
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $files = Get-ChildItem dist/*.exe | ForEach-Object { $_.FullName }
+          if (-not $files) { throw 'no installer found in dist/' }
+          gh release create '${{ github.ref_name }}' $files --draft --title '${{ github.ref_name }}'
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-installers
-          path: |
-            dist/*.exe
-            dist/*.blockmap
-            dist/latest*.yml
+          path: dist/*.exe
           if-no-files-found: error
           retention-days: 14

@@ -11,9 +11,7 @@
     "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "kill": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill-instances.ps1",
     "fresh": "npm run kill && npm start",
-    "build": "npm run build:x64 && npm run build:arm64",
-    "build:x64": "electron-builder --win --x64",
-    "build:arm64": "electron-builder --win --arm64"
+    "build": "electron-builder --win --x64"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
@@ -56,7 +54,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "Dynamic Notch",
-      "artifactName": "DynamicNotch-${version}-${arch}-setup.${ext}"
+      "differentialPackage": false,
+      "artifactName": "DynamicNotch-${version}-setup.${ext}"
     },
     "publish": [
       {
