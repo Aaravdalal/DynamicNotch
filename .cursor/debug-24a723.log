@@ -1,0 +1,4 @@
+{"sessionId":"24a723","location":"battery.js:EVENT","message":"raw battery monitor event","data":{"raw":"EVENT:false|68|true","parts":["false","68","true"]},"timestamp":1783103201538,"hypothesisId":"A-B"}
+{"sessionId":"24a723","location":"battery.js:parsed","message":"parsed battery state","data":{"hasBattery":true,"isCharging":false,"percent":68,"powerSaver":true},"timestamp":1783103201539,"hypothesisId":"A-B"}
+{"sessionId":"24a723","location":"app.js:handleBatteryEvent:entry","message":"battery event received","data":{"bat":{"hasBattery":true,"isCharging":false,"percent":68,"powerSaver":true}},"timestamp":1783103201854,"hypothesisId":"C-D"}
+{"sessionId":"24a723","location":"app.js:handleBatteryEvent:styled","message":"battery icon class applied","data":{"appliedClass":"saver","isCharging":false,"powerSaver":true,"percent":68,"className":"c-batt saver"},"timestamp":1783103201854,"hypothesisId":"C-D"}
